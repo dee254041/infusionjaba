@@ -6,6 +6,7 @@ import { StatusBadge } from "./status-badge"
 import { PaymentBadge } from "./payment-badge"
 import { ActionButton } from "./action-button"
 import { OrderMetaRow } from "./order-meta-row"
+import { OrderDeliveryInfo } from "./order-delivery-info"
 import { formatMoneyKsh, formatTime, getStatusLabel } from "@/lib/order-utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -216,6 +217,9 @@ export function OrderCard<T = any>({
 
         {/* 4) Meta rows */}
         <div className="px-3 sm:px-5 py-2.5 sm:py-4 space-y-1.5 sm:space-y-2 border-b border-[#e5e7eb]">
+          {order.orderSource === "online" && (
+            <OrderDeliveryInfo order={originalOrder ?? order} variant="full" className="mb-1" />
+          )}
           <OrderMetaRow
             left="Customer:"
             right={

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Printer, MoreVertical, Wallet2, Eye, Edit2, Plus, Trash2, RefreshCw, CheckCircle2 } from "lucide-react"
 import { formatMoneyKsh, formatTime, getStatusLabel } from "@/lib/order-utils"
+import { OrderDeliveryInfo } from "./order-delivery-info"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -148,7 +149,11 @@ export function OrderCardMobile<T = any>({
         </div>
         {/* Row 2: Customer + status + source */}
         <div className="flex items-center justify-between gap-2 px-4 pb-2">
-          <span className="text-xs text-[#475569] truncate max-w-[100px]">{customerDisplay}</span>
+          <span className="text-xs text-[#475569] truncate max-w-[140px] font-medium">
+            {order.customerName && order.customerPhone
+              ? `${order.customerName} · ${order.customerPhone}`
+              : customerDisplay}
+          </span>
           <div className="flex items-center gap-1.5 shrink-0">
             {order.orderSource && (
               <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-semibold ${
@@ -167,6 +172,11 @@ export function OrderCardMobile<T = any>({
             <StatusPill status={status} />
           </div>
         </div>
+        {order.orderSource === "online" && (
+          <div className="px-4 pb-2">
+            <OrderDeliveryInfo order={originalOrder ?? order} variant="compact" />
+          </div>
+        )}
         {/* Row 3: Item summary */}
         <div className="px-4 pb-2">
           <p className="text-xs text-[#94a3b8] truncate">

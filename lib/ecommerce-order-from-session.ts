@@ -3,6 +3,7 @@ import { filterInventoryStockLineItems } from '@/lib/catha-order-inventory-lines
 import { ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION } from '@/lib/ecommerce-checkout-session-constants'
 import { logEcommerceRecoveryCritical } from '@/lib/ecommerce-stock-reservation'
 import { maybeSendOnlineOrderSms } from '@/lib/catha-online-order-sms'
+import { buildGoogleMapsUrl, parseDeliveryLocation } from '@/lib/order-delivery-location'
 
 export type EcommerceCheckoutSessionSnapshot = {
   customerName: string
@@ -12,6 +13,7 @@ export type EcommerceCheckoutSessionSnapshot = {
   postalCode: string
   deliveryNotes: string
   deliveryOption: string | null
+  deliveryLocation?: { lat: number; lng: number; accuracy?: number | null } | null
   items: unknown[]
   subtotal: number
   vat: number
@@ -149,6 +151,7 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
 
   const orderId = newEcommerceOrderId()
   const now = new Date()
+  const deliveryLocation = parseDeliveryLocation(snap.deliveryLocation)
   const order = {
     id: orderId,
     type: 'ecommerce' as const,
@@ -162,6 +165,8 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
     postalCode: snap.postalCode,
     deliveryNotes: snap.deliveryNotes,
     deliveryOption: snap.deliveryOption,
+    deliveryLocation: deliveryLocation,
+    deliveryMapsUrl: deliveryLocation ? buildGoogleMapsUrl(deliveryLocation.lat, deliveryLocation.lng) : null,
     items: snap.items,
     subtotal: snap.subtotal,
     vat: snap.vat,
@@ -234,8 +239,13 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
   await maybeSendOnlineOrderSms(db, {
     id: orderId,
     total: snap.total,
+    customerName: snap.customerName,
     customerPhone: session.customerPhone,
     tableNumber: snap.deliveryOption || 'E-commerce',
+    deliveryAddress: snap.deliveryAddress,
+    deliveryNotes: snap.deliveryNotes,
+    deliveryLocation,
+    deliveryMapsUrl: order.deliveryMapsUrl,
   })
 
   console.log('[ecommerce-checkout] order created from paid session', {

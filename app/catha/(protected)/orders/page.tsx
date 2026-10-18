@@ -31,6 +31,7 @@ import { useSession } from "next-auth/react"
 import { useCathaPermissions } from "@/hooks/use-catha-permissions"
 import { OrderCard } from "@/components/orders/order-card"
 import { OrderCardMobile } from "@/components/orders/order-card-mobile"
+import { OrderDeliveryInfo } from "@/components/orders/order-delivery-info"
 import { UserChip } from "@/components/orders/user-chip"
 import { getStatusLabel } from "@/lib/order-utils"
 import { ReceiptModal, type ReceiptOrder } from "@/components/receipt"
@@ -41,7 +42,7 @@ import { Textarea } from "@/components/ui/textarea"
 
 const ORDERS_PAGE_SIZE = 72
 
-function menuOrderSource(tx: Transaction): "menu" | "pos" | "online" | string {
+function menuOrderSource(tx: Transaction): "menu" | "pos" | "online" {
   const raw = String((tx as any).orderSource || "").toLowerCase()
   if (raw === "menu" || raw === "pos" || raw === "online") return raw
   if (raw === "ecommerce" || (tx as any).type === "ecommerce") return "online"
@@ -2803,6 +2804,9 @@ export default function OrdersPage() {
                                     {customerName}{customerName && customerPhone && " • "}{customerPhone}
                                   </span>
                                 )}
+                                {menuOrderSource(tx) === "online" && (
+                                  <OrderDeliveryInfo order={tx} variant="compact" className="mt-0.5" />
+                                )}
                               </div>
                             </TableCell>
                             
@@ -3455,7 +3459,13 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-muted/30 rounded-lg text-xs">
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase">Table</Label>
-                  <p className="text-xs font-semibold mt-0.5">Table {viewingOrder.table}</p>
+                  <p className="text-xs font-semibold mt-0.5">
+                    {viewingOrder.table
+                      ? `Table ${viewingOrder.table}`
+                      : menuOrderSource(viewingOrder) === "online"
+                        ? "Online / delivery"
+                        : "—"}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground uppercase">Date</Label>
@@ -3497,6 +3507,11 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Online order: client phone + exact delivery location */}
+              {(menuOrderSource(viewingOrder) === "online" || (viewingOrder as any).customerPhone) && (
+                <OrderDeliveryInfo order={viewingOrder} variant="full" />
+              )}
 
               {/* Payment Method Badge */}
               <div className="flex items-center gap-2">

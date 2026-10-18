@@ -13,8 +13,9 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import {
   ArrowLeft, Check, Smartphone, Loader2, MapPin, Store,
-  Shield, Truck, Wine, LogIn, Phone, User, Info,
+  Shield, Truck, Wine, LogIn, Phone, User, Info, Navigation,
 } from "lucide-react"
+import { buildGoogleMapsUrl } from "@/lib/order-delivery-location"
 import { toast } from "sonner"
 import { calculateCartTotals } from "@/lib/ecommerce/pricing"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
@@ -78,6 +79,11 @@ export default function CheckoutPage() {
   )
   const [selectedDelivery, setSelectedDelivery] = useState("")
   const [locationNote, setLocationNote] = useState("")
+  /** Precise GPS pin from the browser (required for delivery unless location is unavailable). */
+  const [geoPin, setGeoPin] = useState<{ lat: number; lng: number; accuracy: number | null } | null>(null)
+  const [geoLoading, setGeoLoading] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
+  const geoWatchRef = useRef<number | null>(null)
   const [pickupAddress, setPickupAddress] = useState(DEFAULT_PICKUP)
   const [pickupDirectionsUrl, setPickupDirectionsUrl] = useState("")
 
@@ -98,7 +104,9 @@ export default function CheckoutPage() {
   const deliveryFee = deliveryItem?.fee ?? 0
   const { subtotal, total: cartTotal } = calculateCartTotals(cart)
   const total = cartTotal + deliveryFee
-  const showLocationInput = selectedDelivery === "deliver_to_my_location"
+  const isPickupOption = selectedDelivery.startsWith("collect_")
+  // Any delivery option (not pickup) needs the client's exact location so staff don't have to call.
+  const showLocationInput = Boolean(selectedDelivery) && !isPickupOption
   const showCollectInfo = selectedDelivery === "collect_at_catha_lodge"
   const fullPhone = `+254${phoneDigits}`
   const isPhoneValid = phoneDigits.length === 9
@@ -257,13 +265,100 @@ export default function CheckoutPage() {
     return stop
   }, [pendingCheckoutSessionId, checkoutRequestId, router, clearCart])
 
+  /* ── Precise GPS capture ── */
+  const stopGeoWatch = () => {
+    if (geoWatchRef.current != null && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchRef.current)
+    }
+    geoWatchRef.current = null
+  }
+
+  useEffect(() => () => stopGeoWatch(), [])
+
+  const captureGeoPin = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoError("Your browser does not support location. Enter a detailed address below.")
+      return
+    }
+    stopGeoWatch()
+    setGeoLoading(true)
+    setGeoError(null)
+
+    let best: { lat: number; lng: number; accuracy: number | null } | null = null
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      stopGeoWatch()
+      clearTimeout(timer)
+      setGeoLoading(false)
+      if (best) {
+        setGeoPin(best)
+        toast.success(
+          best.accuracy != null
+            ? `Location captured (±${Math.round(best.accuracy)}m)`
+            : "Location captured"
+        )
+      }
+    }
+    // Keep sampling for a few seconds so we get the most accurate fix, then stop.
+    const timer = setTimeout(() => {
+      if (!best) {
+        finished = true
+        stopGeoWatch()
+        setGeoLoading(false)
+        setGeoError("Could not get your location in time. Check GPS is on and try again.")
+      } else {
+        finish()
+      }
+    }, 12_000)
+
+    geoWatchRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const accuracy = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null
+        if (!best || (accuracy != null && (best.accuracy == null || accuracy < best.accuracy))) {
+          best = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy }
+          setGeoPin(best)
+        }
+        // Good enough fix — stop early
+        if (accuracy != null && accuracy <= 30) finish()
+      },
+      (err) => {
+        if (finished) return
+        if (best) { finish(); return }
+        finished = true
+        stopGeoWatch()
+        clearTimeout(timer)
+        setGeoLoading(false)
+        setGeoError(
+          err.code === 1
+            ? "Location permission denied. Allow location for this site, or enter a detailed address below."
+            : err.code === 2
+              ? "Location unavailable. Turn on GPS and try again, or enter a detailed address below."
+              : "Could not get your location. Try again or enter a detailed address below."
+        )
+      },
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 0 }
+    )
+  }
+
   /* ── Form validation & submit ── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!fullName.trim()) { toast.error("Please enter your full name"); return }
     if (!isPhoneValid) { toast.error("Please enter a valid 9-digit number after +254"); phoneRef.current?.focus(); return }
     if (!selectedDelivery) { toast.error("Please select a delivery option"); return }
-    if (showLocationInput && !locationNote.trim()) { toast.error("Please enter your location or area"); return }
+    if (showLocationInput) {
+      if (!geoPin && !geoError) {
+        toast.error("Tap “Use my current location” so we can find you precisely")
+        return
+      }
+      if (!locationNote.trim()) { toast.error("Please enter your building, estate or landmark"); return }
+      if (!geoPin && locationNote.trim().length < 10) {
+        toast.error("Location is off — please enter a detailed address (building, street, estate, landmark)")
+        return
+      }
+    }
     if (!mpesaEnabled) { toast.error("M-Pesa payment is not available. Please contact support."); return }
     if (checkoutBlocked) {
       toast.error(closedCheckoutNotice || "Checkout is temporarily unavailable during closed hours.")
@@ -286,8 +381,8 @@ export default function CheckoutPage() {
       const deliveryAddress =
         selectedDelivery === "collect_at_catha_lodge"
           ? `Collect at Catha Lounge – ${pickupAddress}`
-          : selectedDelivery === "deliver_to_my_location"
-          ? `Deliver to: ${locationNote || "My location"}`
+          : showLocationInput
+          ? `Deliver to: ${locationNote.trim() || deliveryItem?.label || "My location"}`
           : deliveryItem?.label ?? ""
 
       /** Server builds priced snapshot — no order row until M-Pesa succeeds. */
@@ -299,6 +394,15 @@ export default function CheckoutPage() {
         postalCode: "",
         deliveryNotes: "",
         deliveryOption: selectedDelivery || "",
+        ...(showLocationInput && geoPin
+          ? {
+              deliveryLocation: {
+                lat: geoPin.lat,
+                lng: geoPin.lng,
+                accuracy: geoPin.accuracy != null ? Math.round(geoPin.accuracy) : null,
+              },
+            }
+          : {}),
         items: cart.map((i) => ({
           productId: i.id,
           quantity: i.quantity,
@@ -577,15 +681,62 @@ export default function CheckoutPage() {
                 </div>
 
                 {showLocationInput && (
-                  <div className="mt-4 pt-4 border-t border-[#e2d2bd] space-y-1.5">
-                    <Label htmlFor="locationOrArea" className="text-[#2e2621] font-bold text-sm">Location / Area *</Label>
-                    <Input
-                      id="locationOrArea"
-                      value={locationNote}
-                      onChange={e => setLocationNote(e.target.value)}
-                      className="h-13 rounded-xl border-2 border-[#d8c8b2] bg-[#fffcf6] focus-visible:border-[#9b7740]/55 focus-visible:ring-2 focus-visible:ring-[#9b7740]/18 text-[#2a201b] placeholder:text-[#8d877f]"
-                      placeholder="e.g. Karen, Lavington, Westlands"
-                    />
+                  <div className="mt-4 pt-4 border-t border-[#e2d2bd] space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-[#2e2621] font-bold text-sm">Your exact location *</Label>
+                      <Button
+                        type="button"
+                        onClick={captureGeoPin}
+                        disabled={geoLoading}
+                        variant="outline"
+                        className={cn(
+                          "w-full h-12 rounded-xl border-2 font-bold",
+                          geoPin
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                            : "border-[#a47a43] bg-[#fff6e8] text-[#6b4d1f] hover:bg-[#fbe9cc]"
+                        )}
+                      >
+                        {geoLoading ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Getting your location…</>
+                        ) : geoPin ? (
+                          <><Check className="mr-2 h-4 w-4" /> Location pinned — tap to refresh</>
+                        ) : (
+                          <><Navigation className="mr-2 h-4 w-4" /> Use my current location</>
+                        )}
+                      </Button>
+                      {geoPin && (
+                        <p className="text-xs text-emerald-800">
+                          Pinned{geoPin.accuracy != null ? ` (±${Math.round(geoPin.accuracy)}m)` : ""}.{" "}
+                          <a
+                            href={buildGoogleMapsUrl(geoPin.lat, geoPin.lng)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold underline"
+                          >
+                            Check on map
+                          </a>
+                          {geoPin.accuracy != null && geoPin.accuracy > 150
+                            ? " — accuracy is low; move outdoors or near a window and refresh."
+                            : ""}
+                        </p>
+                      )}
+                      {geoError && !geoPin && <p className="text-xs text-red-600">{geoError}</p>}
+                      <p className="text-[11px] text-[#7f786f]">
+                        Allow location access when your browser asks. This lets our rider find you without calling.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="locationOrArea" className="text-[#2e2621] font-bold text-sm">
+                        Building / estate / landmark *
+                      </Label>
+                      <Input
+                        id="locationOrArea"
+                        value={locationNote}
+                        onChange={e => setLocationNote(e.target.value)}
+                        className="h-13 rounded-xl border-2 border-[#d8c8b2] bg-[#fffcf6] focus-visible:border-[#9b7740]/55 focus-visible:ring-2 focus-visible:ring-[#9b7740]/18 text-[#2a201b] placeholder:text-[#8d877f]"
+                        placeholder="e.g. Karen, Lavington, Westlands"
+                      />
+                    </div>
                   </div>
                 )}
 

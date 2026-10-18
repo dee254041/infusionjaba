@@ -61,6 +61,8 @@ export async function GET(request: Request) {
         city: order.city,
         postalCode: order.postalCode,
         deliveryNotes: order.deliveryNotes,
+        deliveryLocation: order.deliveryLocation ?? null,
+        deliveryMapsUrl: order.deliveryMapsUrl ?? null,
         items: order.items || [],
         subtotal: order.subtotal,
         deliveryFee: order.deliveryFee || 0,

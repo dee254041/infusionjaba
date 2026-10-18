@@ -1,6 +1,7 @@
 import type { Db } from "mongodb"
 import { sendJabaSmsStrict } from "@/lib/jaba-sms"
 import { getCathaNotificationSettings } from "@/lib/catha-notification-settings"
+import { formatDeliveryForSms } from "@/lib/order-delivery-location"
 
 function buildOnlineOrderSmsMessage(order: Record<string, unknown>): string {
   const orderId = String(order.orderId || order.id || "").trim() || "N/A"
@@ -9,7 +10,17 @@ function buildOnlineOrderSmsMessage(order: Record<string, unknown>): string {
   const total = Number.isFinite(totalNum) ? totalNum.toLocaleString() : "0"
   const phone = String(order.customerPhone || "").trim()
   const customerPhone = phone || "N/A"
-  return `New online order received.\nOrder: ${orderId}\nTable: ${table}\nTotal: KES ${total}\nCustomer: ${customerPhone}`
+  const name = String(order.customerName || "").trim()
+  const lines = [
+    "New online order received.",
+    `Order: ${orderId}`,
+    `Table: ${table}`,
+    `Total: KES ${total}`,
+    `Customer: ${name ? `${name} ` : ""}${customerPhone}`.trim(),
+  ]
+  const delivery = formatDeliveryForSms(order)
+  if (delivery) lines.push(delivery)
+  return lines.join("\n")
 }
 
 export async function maybeSendOnlineOrderSms(

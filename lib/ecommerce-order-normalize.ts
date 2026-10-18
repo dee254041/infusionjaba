@@ -5,6 +5,7 @@
  */
 
 import { pickCartLineIntent } from '@/lib/shop-cart-normalize'
+import { parseDeliveryLocation } from '@/lib/order-delivery-location'
 
 function pickMinimalLine(raw: unknown): Record<string, unknown> | null {
   const base = pickCartLineIntent(raw)
@@ -50,6 +51,15 @@ export function normalizeEcommerceOrderCreateBody(body: unknown): unknown {
   if (b.deliveryFee !== undefined && b.deliveryFee !== null) {
     const n = Number(b.deliveryFee)
     if (Number.isFinite(n)) out.deliveryFee = n
+  }
+
+  const loc = parseDeliveryLocation(b.deliveryLocation)
+  if (loc) {
+    out.deliveryLocation = {
+      lat: loc.lat,
+      lng: loc.lng,
+      accuracy: loc.accuracy ?? null,
+    }
   }
 
   return out

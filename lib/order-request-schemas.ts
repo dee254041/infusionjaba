@@ -118,6 +118,15 @@ export const ecommerceOrderCreateSchema = z
     deliveryNotes: z.string().max(2000).optional(),
     deliveryOption: z.string().max(120).optional(),
     deliveryFee: z.number().min(0).max(50_000).optional(),
+    /** Precise GPS pin captured at checkout (browser Geolocation). */
+    deliveryLocation: z
+      .object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        accuracy: z.number().min(0).max(1_000_000).nullable().optional(),
+      })
+      .strict()
+      .optional(),
     items: z.array(minimalInventoryLineSchema).min(1).max(200),
   })
   .strict()

@@ -171,6 +171,13 @@ export async function POST(request: Request) {
       postalCode: (body.postalCode ?? '').trim(),
       deliveryNotes: (body.deliveryNotes ?? '').trim(),
       deliveryOption: body.deliveryOption?.trim() || null,
+      deliveryLocation: body.deliveryLocation
+        ? {
+            lat: body.deliveryLocation.lat,
+            lng: body.deliveryLocation.lng,
+            accuracy: body.deliveryLocation.accuracy ?? null,
+          }
+        : null,
       items: priced.items,
       subtotal: serverSubtotal,
       vat: serverVat,

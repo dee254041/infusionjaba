@@ -19,6 +19,7 @@ import {
 } from '@/lib/inventory-ops'
 import { formatCathaOrderForApi } from '@/lib/catha-order-payments'
 import { normalizeKenyaPhone } from '@/lib/phone-utils'
+import { parseDeliveryLocation } from '@/lib/order-delivery-location'
 import { baseLinkedListFromOrder } from '@/lib/catha-append-mpesa-payment'
 import { deleteAllAllocationsForOrder, refreshMpesaTransactionLinkMetadata } from '@/lib/catha-mpesa-order-allocations'
 import { filterInventoryStockLineItems, orderLineFingerprintParts } from '@/lib/catha-order-inventory-lines'
@@ -122,6 +123,15 @@ function orderDocumentToJson(order: any) {
     servedBy: order.servedBy || null,
     customerName: order.customerName || null,
     customerPhone: order.customerPhone || null,
+    deliveryAddress: order.deliveryAddress || null,
+    deliveryNotes: order.deliveryNotes || null,
+    deliveryOption: order.deliveryOption || null,
+    deliveryFee: order.deliveryFee ?? null,
+    deliveryLocation: parseDeliveryLocation(order.deliveryLocation),
+    deliveryMapsUrl:
+      typeof order.deliveryMapsUrl === 'string' && order.deliveryMapsUrl.startsWith('https://')
+        ? order.deliveryMapsUrl
+        : null,
     paymentReceiptSmsStatus: order.paymentReceiptSmsStatus || null,
     paymentReceiptSmsSentAt: toIsoOrNull(order.paymentReceiptSmsSentAt),
     paymentReceiptSmsPhone: order.paymentReceiptSmsPhone || null,
