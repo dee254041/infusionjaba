@@ -65,9 +65,11 @@ export async function GET(request: Request) {
       else if (item.size === '2L') row.l2 += qty
     }
 
+    // `closed` = batch was cleared via "Clear old batches": its leftover stock was written off.
     const rowToSizes = (
       p: { l250: number; l500: number; l1: number; l2: number },
-      d: { l250: number; l500: number; l1: number; l2: number }
+      d: { l250: number; l500: number; l1: number; l2: number },
+      closed = false
     ): {
       total250ml: SizeTriplet
       total500ml: SizeTriplet
@@ -77,28 +79,29 @@ export async function GET(request: Request) {
       total250ml: {
         original: p.l250,
         distributed: d.l250,
-        remaining: Math.max(0, p.l250 - d.l250),
+        remaining: closed ? 0 : Math.max(0, p.l250 - d.l250),
       },
       total500ml: {
         original: p.l500,
         distributed: d.l500,
-        remaining: Math.max(0, p.l500 - d.l500),
+        remaining: closed ? 0 : Math.max(0, p.l500 - d.l500),
       },
       total1L: {
         original: p.l1,
         distributed: d.l1,
-        remaining: Math.max(0, p.l1 - d.l1),
+        remaining: closed ? 0 : Math.max(0, p.l1 - d.l1),
       },
       total2L: {
         original: p.l2,
         distributed: d.l2,
-        remaining: Math.max(0, p.l2 - d.l2),
+        remaining: closed ? 0 : Math.max(0, p.l2 - d.l2),
       },
     })
 
     // Process batches with packaging and distribution data
     const batchesWithData = batches.map((batch: any) => {
       const batchId = batch._id.toString()
+      const isClosed = batch.batchClosed === true
       
       // Get all packaging outputs for this batch
       const batchPackagingOutputs = packagingOutputs.filter(
@@ -208,7 +211,7 @@ export async function GET(request: Request) {
         .map((key) => {
           const p = packByFlavour.get(key) || { l250: 0, l500: 0, l1: 0, l2: 0 }
           const d = distByFlavour.get(key) || { l250: 0, l500: 0, l1: 0, l2: 0 }
-          const sizes = rowToSizes(p, d)
+          const sizes = rowToSizes(p, d, isClosed)
           const orig =
             sizes.total250ml.original +
             sizes.total500ml.original +
@@ -239,10 +242,10 @@ export async function GET(request: Request) {
         .sort((a, b) => b.totalBottles.remaining - a.totalBottles.remaining)
 
       // Calculate remaining quantities
-      const remaining250ml = Math.max(0, total250ml - distributed250ml)
-      const remaining500ml = Math.max(0, total500ml - distributed500ml)
-      const remaining1L = Math.max(0, total1L - distributed1L)
-      const remaining2L = Math.max(0, total2L - distributed2L)
+      const remaining250ml = isClosed ? 0 : Math.max(0, total250ml - distributed250ml)
+      const remaining500ml = isClosed ? 0 : Math.max(0, total500ml - distributed500ml)
+      const remaining1L = isClosed ? 0 : Math.max(0, total1L - distributed1L)
+      const remaining2L = isClosed ? 0 : Math.max(0, total2L - distributed2L)
       const totalBottles = total250ml + total500ml + total1L + total2L
       const distributedBottles = distributed250ml + distributed500ml + distributed1L + distributed2L
       const remainingBottles = remaining250ml + remaining500ml + remaining1L + remaining2L
@@ -286,6 +289,7 @@ export async function GET(request: Request) {
           remaining: remainingBottles,
         },
         status,
+        clearedAsLoss: isClosed,
         byFlavour,
         packagingOutputs: batchPackagingOutputs.map((po: any) => ({
           _id: po._id.toString(),

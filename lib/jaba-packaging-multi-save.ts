@@ -383,6 +383,12 @@ export async function executeMultiFlavourPackagingTransaction(params: {
         .collection('jaba_batches')
         .findOne({ _id: new ObjectId(batchId) }, { session: mongoSession })
       if (!txBatch) throw new PackagingApiError('Batch not found', 404)
+      if ((txBatch as Record<string, unknown>).batchClosed === true) {
+        throw new PackagingApiError(
+          'This batch was cleared and is closed. Reopen it from the Batches page to package it.',
+          409
+        )
+      }
 
       let lineIdx = 0
       const insertedPackagingIds: string[] = []

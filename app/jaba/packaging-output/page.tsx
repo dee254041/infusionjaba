@@ -1,14 +1,32 @@
 "use client"
 
 import { useState, useEffect, useMemo, Fragment } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Label } from "@/components/ui/label"
-import { Plus, Search, Boxes, FileText, Users, Calendar, TrendingUp, AlertCircle, CheckCircle2, Clock, Grid3x3, Table as TableIcon, Package, Factory, Activity, Loader2, Trash2, Layers } from "lucide-react"
+import {
+  Plus,
+  Search,
+  Boxes,
+  Users,
+  Calendar,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Grid3x3,
+  Table as TableIcon,
+  Loader2,
+  Trash2,
+  Layers,
+  RefreshCw,
+  X,
+  ChevronDown,
+  type LucideIcon,
+} from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -196,8 +214,6 @@ export default function PackagingSessionsPage() {
 
   // Transform API data to match the expected format
   const packagingSessions: PackagingSession[] = useMemo(() => {
-    console.log('[Packaging Output Page] Transforming packaging outputs:', packagingOutputs.length)
-    
     // Sort by createdAt (most recent first) to ensure latest appear first
     const sortedOutputs = [...packagingOutputs].sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
@@ -244,13 +260,6 @@ export default function PackagingSessionsPage() {
         // Calculate from packaged vs allocated volume
         efficiency = Math.round((output.packagedLitres / output.volumeAllocated) * 100 * 10) / 10
       }
-      
-      console.log('[Packaging Output Page] Efficiency calculation:', {
-        packagedLitres: output.packagedLitres,
-        volumeAllocated: output.volumeAllocated,
-        machineEfficiency: output.machineEfficiency,
-        calculatedEfficiency: efficiency
-      })
 
       // Determine status based on data
       let status = "Completed" // Default to completed since it's saved
@@ -311,19 +320,10 @@ export default function PackagingSessionsPage() {
             ? output.packagingSessionLineIndex
             : undefined,
       }
-      
-      console.log('[Packaging Output Page] Transformed session:', session.sessionId, 'from output:', output._id || output.id)
+
       return session
     })
   }, [packagingOutputs])
-  
-  // Log transformed sessions
-  useEffect(() => {
-    console.log('[Packaging Output Page] Total transformed sessions:', packagingSessions.length)
-    if (packagingSessions.length > 0) {
-      console.log('[Packaging Output Page] First session:', packagingSessions[0])
-    }
-  }, [packagingSessions])
 
   const filteredSessions = useMemo(() => {
     return packagingSessions.filter((session) => {
@@ -373,527 +373,321 @@ export default function PackagingSessionsPage() {
     return m
   }, [filteredSessions])
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Completed":
-        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-      case "In Progress":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-      case "Pending":
-        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-      default:
-        return "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
-    }
-  }
+  const stats = useMemo(() => {
+    const bottles = packagingSessions.reduce((n, s) => n + sessionTotalBottles(s), 0)
+    const litres = packagingSessions.reduce((n, s) => n + s.totalLitresUsed, 0)
+    const defects = packagingSessions.reduce((n, s) => n + s.defects, 0)
+    const completed = packagingSessions.filter((s) => s.status === "Completed").length
+    const avgEfficiency =
+      packagingSessions.length > 0
+        ? Math.round((packagingSessions.reduce((n, s) => n + s.efficiency, 0) / packagingSessions.length) * 10) / 10
+        : 0
+    return { bottles, litres, defects, completed, avgEfficiency }
+  }, [packagingSessions])
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: packagingSessions.length, Pending: 0, "In Progress": 0, Completed: 0 }
+    for (const s of packagingSessions) counts[s.status] = (counts[s.status] ?? 0) + 1
+    return counts
+  }, [packagingSessions])
+
+  const hasFilters = searchQuery.trim() !== "" || statusFilter !== "all"
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex min-h-16 flex-col gap-3 border-b border-border bg-card/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:px-6 md:h-16 md:flex-row md:items-center md:justify-between md:py-0">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-foreground sm:text-xl">Packaging Sessions</h1>
-          <p className="text-xs text-muted-foreground sm:text-sm">Manage packaging sessions after production</p>
-        </div>
-        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <Button 
-            variant="outline" 
-            onClick={fetchPackagingOutputs}
-            disabled={loading}
-            className="w-full border-slate-300 dark:border-slate-700 sm:w-auto"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4 mr-2" />
-            )}
-            Refresh
-          </Button>
-        <Link href="/jaba/packaging-output/add" className="w-full sm:w-auto">
-          <Button className="w-full bg-gradient-to-r from-red-600 to-red-700 shadow-lg shadow-red-500/30 hover:from-red-700 hover:to-red-800 sm:w-auto">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Packaging Session
-          </Button>
-        </Link>
+      {/* ───────────── Page header ───────────── */}
+      <header className="sticky top-0 z-30 border-b border-border bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/75">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-red-700 text-white shadow-md shadow-red-500/25">
+              <Boxes className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                Packaging Sessions
+              </h1>
+              <p className="truncate text-xs text-muted-foreground sm:text-sm">
+                Track what was bottled, labelled and rejected after production
+              </p>
+            </div>
+          </div>
+          <div className="flex w-full items-center gap-2 md:w-auto">
+            <Button
+              variant="outline"
+              onClick={fetchPackagingOutputs}
+              disabled={loading}
+              className="h-10 flex-1 md:flex-none"
+            >
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Refresh
+            </Button>
+            <Link href="/jaba/packaging-output/add" className="flex-[2] md:flex-none">
+              <Button className="h-10 w-full bg-gradient-to-r from-red-600 to-red-700 shadow-md shadow-red-500/25 hover:from-red-700 hover:to-red-800">
+                <Plus className="mr-2 h-4 w-4" />
+                New Session
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
-      <div className="space-y-4 bg-gradient-to-br from-slate-50 via-background to-slate-50 p-3 dark:from-slate-950 dark:via-background dark:to-slate-950 dark:to-slate-950 sm:space-y-6 sm:p-4 md:p-6">
-        {/* Debug Info - Remove after fixing */}
-        {process.env.NODE_ENV === 'development' && (
-          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20">
-            <CardContent className="p-4">
-              <p className="text-xs font-mono">
-                Debug: Loading={loading.toString()}, Outputs={packagingOutputs.length}, Sessions={packagingSessions.length}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-        
-        {/* Loading State */}
+      <div className="mx-auto w-full max-w-[1800px] space-y-5 bg-slate-50/60 p-3 dark:bg-transparent sm:p-4 md:p-6">
         {loading ? (
-          <Card className="border-slate-200 dark:border-slate-800">
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center gap-3">
-                <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-                <p className="text-muted-foreground font-medium">Loading packaging sessions...</p>
-              </div>
-            </CardContent>
-          </Card>
+          <PageSkeleton />
         ) : packagingSessions.length === 0 && packagingOutputs.length === 0 ? (
-          <Card className="border-slate-200 dark:border-slate-800">
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center gap-3">
-                <Boxes className="h-8 w-8 text-muted-foreground/50" />
-                <p className="text-muted-foreground font-medium">No packaging sessions found</p>
-                <p className="text-sm text-muted-foreground">Create a packaging session from the batches page</p>
-                <Link href="/jaba/batches">
-                  <Button variant="outline" className="mt-2">
-                    Go to Batches
+          <Card className="border-dashed border-border bg-card shadow-none">
+            <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400">
+                <Boxes className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="text-base font-semibold text-foreground">No packaging sessions yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Start a session to record bottles filled, stickers used and defects.
+                </p>
+              </div>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <Link href="/jaba/packaging-output/add">
+                  <Button className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Packaging Session
                   </Button>
+                </Link>
+                <Link href="/jaba/batches">
+                  <Button variant="outline">Go to Batches</Button>
                 </Link>
               </div>
             </CardContent>
           </Card>
         ) : packagingSessions.length === 0 && packagingOutputs.length > 0 ? (
-          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
-            <CardContent className="p-12">
-              <div className="flex flex-col items-center justify-center gap-3">
-                <AlertCircle className="h-8 w-8 text-amber-500" />
-                <p className="text-muted-foreground font-medium">Data transformation issue</p>
-                <p className="text-sm text-muted-foreground">
-                  Found {packagingOutputs.length} packaging output(s) but couldn't transform them. Check console for details.
-                </p>
-              </div>
+          <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
+            <CardContent className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+              <AlertCircle className="h-8 w-8 text-amber-500" />
+              <p className="font-medium text-foreground">Data transformation issue</p>
+              <p className="text-sm text-muted-foreground">
+                Found {packagingOutputs.length} packaging output(s) but couldn&apos;t transform them. Check console for details.
+              </p>
             </CardContent>
           </Card>
         ) : (
           <>
-        {/* Summary Cards */}
-        <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-red-200 dark:border-red-900/50 bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-950/30 dark:to-red-900/20 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">Total Sessions</p>
-                  <p className="mb-2 text-2xl font-bold text-red-900 dark:text-red-100 sm:text-3xl">{packagingSessions.length}</p>
-                  <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
-                    <Boxes className="h-3 w-3" />
-                    <span>Packaging records</span>
-                  </div>
-                </div>
-                <div className="rounded-xl p-3 bg-red-100 dark:bg-red-900/40 border border-red-200 dark:border-red-800/50">
-                  <Boxes className="h-6 w-6 text-red-600 dark:text-red-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-green-200 dark:border-green-900/50 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/30 dark:to-green-900/20 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-green-700 dark:text-green-300 mb-1">Completed</p>
-                  <p className="mb-2 text-2xl font-bold text-green-900 dark:text-green-100 sm:text-3xl">
-                    {packagingSessions.filter((s) => s.status === "Completed").length}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
-                    <Boxes className="h-3 w-3" />
-                    <span>Sessions</span>
-                  </div>
-                </div>
-                <div className="rounded-xl p-3 bg-green-100 dark:bg-green-900/40 border border-green-200 dark:border-green-800/50">
-                  <Boxes className="h-6 w-6 text-green-600 dark:text-green-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-amber-200 dark:border-amber-900/50 bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-1">Total Defects</p>
-                  <p className="mb-2 text-2xl font-bold text-amber-900 dark:text-amber-100 sm:text-3xl">
-                    {packagingSessions.reduce((sum, s) => sum + s.defects, 0)}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-                    <Boxes className="h-3 w-3" />
-                    <span>Rejected bottles</span>
-                  </div>
-                </div>
-                <div className="rounded-xl p-3 bg-amber-100 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-800/50">
-                  <Boxes className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-blue-200 dark:border-blue-900/50 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 shadow-lg hover:shadow-xl transition-shadow">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">Avg Efficiency</p>
-                  <p className="mb-2 text-2xl font-bold text-blue-900 dark:text-blue-100 sm:text-3xl">
-                    {packagingSessions.length > 0
-                      ? Math.round((packagingSessions.reduce((sum, s) => sum + s.efficiency, 0) / packagingSessions.length) * 10) / 10
-                      : 0}%
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                    <Boxes className="h-3 w-3" />
-                    <span>Packaging rate</span>
-                  </div>
-                </div>
-                <div className="rounded-xl p-3 bg-blue-100 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800/50">
-                  <Boxes className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card className="border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 shadow-md">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:gap-4 md:flex-row">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search by session ID or batch number..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-secondary border-0"
+            {/* ───────────── Summary strip ───────────── */}
+            <Card className="overflow-hidden border-border/70 shadow-sm">
+              <div className="grid grid-cols-2 divide-x divide-y divide-border/70 lg:grid-cols-4 lg:divide-y-0">
+                <StatTile
+                  icon={Boxes}
+                  tone="red"
+                  label="Total sessions"
+                  value={packagingSessions.length.toLocaleString()}
+                  hint={`${stats.bottles.toLocaleString()} bottles · ${formatLitres(stats.litres)} L`}
+                />
+                <StatTile
+                  icon={CheckCircle2}
+                  tone="emerald"
+                  label="Completed"
+                  value={stats.completed.toLocaleString()}
+                  hint={`of ${packagingSessions.length} sessions`}
+                />
+                <StatTile
+                  icon={AlertCircle}
+                  tone="amber"
+                  label="Total defects"
+                  value={stats.defects.toLocaleString()}
+                  hint="Rejected bottles"
+                />
+                <StatTile
+                  icon={TrendingUp}
+                  tone="blue"
+                  label="Avg efficiency"
+                  value={`${stats.avgEfficiency}%`}
+                  hint="Average packaging rate"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full md:w-[200px] bg-secondary border-0">
-                  <SelectValue placeholder="Filter by Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+            </Card>
 
-        {/* Packaging Sessions Grid/Table */}
-        <div>
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="flex items-center gap-2 text-base font-semibold text-foreground sm:text-lg">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/20 dark:to-red-900/10 border border-red-200 dark:border-red-800/50">
-                <Boxes className="h-5 w-5 text-red-600 dark:text-red-400" />
-              </div>
-              Packaging Sessions ({filteredSessions.length})
-            </h2>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <Button
-                variant={viewMode === "grid" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("grid")}
-                className="h-9 w-full sm:w-auto"
-              >
-                <Grid3x3 className="h-4 w-4 mr-2" />
-                Grid
-              </Button>
-              <Button
-                variant={viewMode === "table" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("table")}
-                className="h-9 w-full sm:w-auto"
-              >
-                <TableIcon className="h-4 w-4 mr-2" />
-                Table
-              </Button>
-            </div>
-          </div>
+            {/* ───────────── Toolbar ───────────── */}
+            <Card className="border-border/70 shadow-sm">
+              <CardContent className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search session, batch or flavour…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-10 border-border bg-background pl-9 pr-9"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      aria-label="Clear search"
+                      className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
 
-          {filteredSessions.length === 0 ? (
-            <Card className="border-slate-200 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-950 shadow-lg">
-              <CardContent className="p-12">
-                <div className="flex flex-col items-center justify-center gap-3">
-                  <div className="p-4 rounded-full bg-slate-100 dark:bg-slate-800">
-                    <Boxes className="h-8 w-8 text-muted-foreground/50" />
-                  </div>
-                  <p className="text-muted-foreground font-medium text-lg">No packaging sessions found</p>
-                  <p className="text-sm text-muted-foreground">Try adjusting your search or filter criteria</p>
+                <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:pb-0">
+                  {STATUS_FILTERS.map((f) => {
+                    const active = statusFilter === f.value
+                    return (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => setStatusFilter(f.value)}
+                        className={cn(
+                          "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                          active
+                            ? "border-red-600 bg-red-600 text-white shadow-sm"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        {f.label}
+                        <span
+                          className={cn(
+                            "rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                            active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {statusCounts[f.value] ?? 0}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="inline-flex shrink-0 self-start rounded-lg border border-border bg-muted/50 p-0.5 lg:self-auto">
+                  {(
+                    [
+                      { mode: "grid", label: "Cards", Icon: Grid3x3 },
+                      { mode: "table", label: "Table", Icon: TableIcon },
+                    ] as const
+                  ).map(({ mode, label, Icon }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      aria-pressed={viewMode === mode}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                        viewMode === mode
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </CardContent>
             </Card>
-          ) : viewMode === "grid" ? (
-            <div className="space-y-6">
-              {groupedFilteredSessions.map((group) => {
-                const groupLitres = group.sessions.reduce((a, s) => a + s.totalLitresUsed, 0)
-                const multi = group.sessions.length > 1
-                return (
-                  <div
-                    key={group.groupKey}
-                    title={group.packagingSessionGroupId}
-                    className={cn(
-                      "space-y-3",
-                      multi &&
-                        "rounded-xl border border-indigo-200/80 bg-indigo-50/35 p-3 shadow-sm dark:border-indigo-900/55 dark:bg-indigo-950/30 sm:p-4"
-                    )}
-                  >
-                    {multi && (
-                      <div className="flex flex-wrap items-center gap-2 border-b border-indigo-200/70 pb-2.5 dark:border-indigo-800/55">
-                        <Badge
-                          variant="outline"
-                          className="border-indigo-400 bg-indigo-100/90 text-indigo-900 dark:border-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-100"
-                        >
-                          <Layers className="mr-1 h-3 w-3" />
-                          Multi-flavour save
-                        </Badge>
-                        <span className="text-sm font-semibold text-foreground">{group.sessions[0]?.sessionId}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {group.sessions.length} lines · {groupLitres.toFixed(2)} L · {group.sessions[0]?.batchNumber}
-                        </span>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                      {group.sessions.map((session) => {
-                const totalOutput = session.output250ml + session.output500ml + session.output1L + session.output2L + (session.otherSizes?.reduce((sum, s) => sum + s.quantity, 0) || 0)
-                const StatusIcon = session.status === "Completed" ? CheckCircle2 : session.status === "In Progress" ? Clock : AlertCircle
 
-                return (
-                  <Card
-                    key={session.id}
-                    className={cn(
-                      "border-slate-200 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-950 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1",
-                      multi && "ring-1 ring-indigo-200/70 dark:ring-indigo-800/50",
-                      session.status === "Completed" && "border-green-200 dark:border-green-800/50",
-                      session.status === "In Progress" && "border-blue-200 dark:border-blue-800/50",
-                      session.status === "Pending" && "border-amber-200 dark:border-amber-800/50"
-                    )}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-base font-bold text-foreground mb-1 leading-tight">
-                            {session.sessionDisplayTitle}
-                          </CardTitle>
-                          <p className="text-xs text-muted-foreground font-medium">{session.batchNumber}</p>
-                        </div>
-                        <Badge className={cn("font-medium text-xs", getStatusColor(session.status))}>
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {session.status}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4 p-4 sm:p-6">
-                      {/* Date */}
-                      <div className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">
-                          {session.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        </span>
-                      </div>
+            {/* ───────────── Results ───────────── */}
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-foreground sm:text-base">
+                Sessions
+                <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
+                  {filteredSessions.length}
+                  {hasFilters ? ` of ${packagingSessions.length}` : ""}
+                </span>
+              </h2>
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("")
+                    setStatusFilter("all")
+                  }}
+                  className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
 
-                      {/* Litres Used */}
-                      <div className="p-3 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800/50">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-blue-700 dark:text-blue-300">Litres Used</span>
-                          <span className="text-lg font-bold text-blue-900 dark:text-blue-100">{session.totalLitresUsed}L</span>
-                        </div>
-                      </div>
-
-                      {/* Output Breakdown */}
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Output</p>
-                        <div className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-3 sm:grid-cols-4">
-                          {session.output250ml > 0 && (
-                            <div className="rounded-lg border-2 border-fuchsia-300 bg-gradient-to-br from-fuchsia-100 to-fuchsia-200 p-2.5 text-center shadow-sm transition-shadow hover:shadow-md dark:border-fuchsia-700 dark:from-fuchsia-900/40 dark:to-fuchsia-800/30 sm:p-3">
-                              <p className="text-sm font-bold text-fuchsia-900 dark:text-fuchsia-100 sm:text-base">{session.output250ml}</p>
-                              <p className="text-[10px] font-semibold text-fuchsia-700 dark:text-fuchsia-300 uppercase tracking-wide">250ml</p>
-                            </div>
-                          )}
-                          {session.output500ml > 0 && (
-                            <div className="rounded-lg border-2 border-purple-300 bg-gradient-to-br from-purple-100 to-purple-200 p-2.5 text-center shadow-sm transition-shadow hover:shadow-md dark:border-purple-700 dark:from-purple-900/40 dark:to-purple-800/30 sm:p-3">
-                              <p className="text-sm font-bold text-purple-900 dark:text-purple-100 sm:text-base">{session.output500ml}</p>
-                              <p className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wide">500ml</p>
-                            </div>
-                          )}
-                          {session.output1L > 0 && (
-                            <div className="rounded-lg border-2 border-emerald-300 bg-gradient-to-br from-emerald-100 to-emerald-200 p-2.5 text-center shadow-sm transition-shadow hover:shadow-md dark:border-emerald-700 dark:from-emerald-900/40 dark:to-emerald-800/30 sm:p-3">
-                              <p className="text-sm font-bold text-emerald-900 dark:text-emerald-100 sm:text-base">{session.output1L}</p>
-                              <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">1L</p>
-                            </div>
-                          )}
-                          {session.output2L > 0 && (
-                            <div className="rounded-lg border-2 border-amber-300 bg-gradient-to-br from-amber-100 to-amber-200 p-2.5 text-center shadow-sm transition-shadow hover:shadow-md dark:border-amber-700 dark:from-amber-900/40 dark:to-amber-800/30 sm:p-3">
-                              <p className="text-sm font-bold text-amber-900 dark:text-amber-100 sm:text-base">{session.output2L}</p>
-                              <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">2L</p>
-                            </div>
-                          )}
-                        </div>
-                        {session.otherSizes && session.otherSizes.length > 0 && (
-                          <p className="text-xs text-muted-foreground">+{session.otherSizes.length} other sizes</p>
-                        )}
-                        <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                          <p className="text-xs text-muted-foreground">
-                            Total: <span className="font-bold text-foreground">{totalOutput} bottles</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      {(session.packedFlavourName || (session.stickerAuditLines && session.stickerAuditLines.length > 0)) && (
-                        <div className="rounded-lg border border-violet-200 bg-violet-50/90 p-3 dark:border-violet-800 dark:bg-violet-950/30">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                            Stickers consumed (audit)
-                          </p>
-                          {session.packedFlavourName && (
-                            <p className="mt-1 text-sm font-semibold text-violet-900 dark:text-violet-100">
-                              Flavour: {session.packedFlavourName}
-                            </p>
-                          )}
-                          {session.stickerAuditLines && session.stickerAuditLines.length > 0 ? (
-                            <ul className="mt-2 space-y-1 text-xs text-violet-800 dark:text-violet-200">
-                              {session.stickerAuditLines.map((line, i) => (
-                                <li key={i} className="leading-snug">
-                                  {line}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Line-level detail not stored for this session (older record).
-                            </p>
-                          )}
+            {filteredSessions.length === 0 ? (
+              <Card className="border-dashed border-border bg-card shadow-none">
+                <CardContent className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Search className="h-5 w-5" />
+                  </div>
+                  <p className="text-base font-semibold text-foreground">No sessions match</p>
+                  <p className="text-sm text-muted-foreground">Try a different search or status filter.</p>
+                </CardContent>
+              </Card>
+            ) : viewMode === "grid" ? (
+              <div className="space-y-5">
+                {groupedFilteredSessions.map((group) => {
+                  const groupLitres = group.sessions.reduce((a, s) => a + s.totalLitresUsed, 0)
+                  const multi = group.sessions.length > 1
+                  return (
+                    <section
+                      key={group.groupKey}
+                      title={group.packagingSessionGroupId}
+                      className={cn(
+                        multi &&
+                          "rounded-2xl border border-indigo-200/80 bg-indigo-50/40 p-3 dark:border-indigo-900/55 dark:bg-indigo-950/25 sm:p-4"
+                      )}
+                    >
+                      {multi && (
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="border-indigo-300 bg-white/80 text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-100"
+                          >
+                            <Layers className="mr-1 h-3 w-3" />
+                            Multi-flavour save
+                          </Badge>
+                          <span className="text-sm font-semibold text-foreground">{group.sessions[0]?.sessionId}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {group.sessions.length} lines · {groupLitres.toFixed(2)} L · {group.sessions[0]?.batchNumber}
+                          </span>
                         </div>
                       )}
-
-                      {/* Team Members */}
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-muted-foreground truncate">
-                            {session.teamMembers.slice(0, 2).join(", ")}
-                            {session.teamMembers.length > 2 && ` +${session.teamMembers.length - 2} more`}
-                          </p>
-                        </div>
+                      <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                        {group.sessions.map((session) => (
+                          <SessionCard
+                            key={session.id}
+                            session={session}
+                            grouped={multi}
+                            onDelete={() => handleDeleteSession(session.id, session.sessionId)}
+                          />
+                        ))}
                       </div>
-
-                      {/* Metrics Row */}
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                        <div className="text-center p-2 rounded-md bg-slate-50 dark:bg-slate-900/50">
-                          <p className="text-xs text-muted-foreground mb-1">Defects</p>
-                          <Badge className={cn(
-                            "text-xs font-bold",
-                            session.defects > 0 ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                          )}>
-                            {session.defects}
-                          </Badge>
-                        </div>
-                        <div className="text-center p-2 rounded-md bg-slate-50 dark:bg-slate-900/50">
-                          <p className="text-xs text-muted-foreground mb-1">Efficiency</p>
-                          <Badge className={cn(
-                            "text-xs font-bold",
-                            session.efficiency >= 95 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
-                            session.efficiency >= 90 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" :
-                            "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                          )}>
-                            <TrendingUp className="h-3 w-3 mr-1" />
-                            {session.efficiency}%
-                          </Badge>
-                        </div>
-                      </div>
-
-                      {/* Additional Info */}
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Line:</span>
-                          <span className="font-medium text-foreground">{session.packagingLine}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs mt-1">
-                          <span className="text-muted-foreground">Supervisor:</span>
-                          <span className="font-medium text-foreground truncate ml-2">{session.supervisor}</span>
-                        </div>
-                        <div className="mt-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteSession(session.id, session.sessionId)}
-                            className="w-full border-red-300 text-red-600 hover:text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Session
-                          </Button>
-                        </div>
-                      </div>
-
-                    </CardContent>
-                  </Card>
-                )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <Card className="border-slate-200 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-950 shadow-xl overflow-hidden">
-              <CardHeader className="border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-red-50 to-red-100/30 dark:from-red-950/20 dark:to-red-900/10 px-6 py-4">
-                <CardTitle className="text-lg font-semibold text-card-foreground flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30">
-                    <TableIcon className="h-5 w-5 text-red-600 dark:text-red-400" />
-                  </div>
-                  Packaging Sessions Table View
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
+                    </section>
+                  )
+                })}
+              </div>
+            ) : (
+              <Card className="overflow-hidden border-border/70 shadow-sm">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 border-b-2 border-slate-300 dark:border-slate-700">
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-3.5 w-3.5" />
-                            Session ID
-                          </div>
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Boxes className="h-3.5 w-3.5" />
-                            Batch Number
-                          </div>
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-3.5 w-3.5" />
-                            Date
-                          </div>
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4">
-                          Litres Used
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4 min-w-[280px]">
-                          Output
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4 min-w-[200px] max-w-[320px]">
-                          Flavour / stickers (audit)
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Users className="h-3.5 w-3.5" />
-                            Team
-                          </div>
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4 text-center">
-                          Defects
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <TrendingUp className="h-3.5 w-3.5" />
-                            Efficiency
-                          </div>
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4 text-center">
-                          Status
-                        </TableHead>
-                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 px-6 py-4 text-center">
-                          Actions
-                        </TableHead>
+                      <TableRow className="border-b border-border bg-muted/50 hover:bg-muted/50">
+                        {[
+                          { label: "Session", cls: "min-w-[220px]" },
+                          { label: "Date", cls: "" },
+                          { label: "Litres", cls: "text-right" },
+                          { label: "Output", cls: "min-w-[260px]" },
+                          { label: "Flavour / stickers", cls: "min-w-[200px]" },
+                          { label: "Team", cls: "min-w-[150px]" },
+                          { label: "Defects", cls: "text-center" },
+                          { label: "Efficiency", cls: "min-w-[140px]" },
+                          { label: "Status", cls: "text-center" },
+                          { label: "", cls: "w-[60px] text-right" },
+                        ].map((h, i) => (
+                          <TableHead
+                            key={i}
+                            className={cn(
+                              "h-11 whitespace-nowrap px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
+                              h.cls
+                            )}
+                          >
+                            {h.label || <span className="sr-only">Actions</span>}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -903,13 +697,13 @@ export default function PackagingSessionsPage() {
                         return (
                           <Fragment key={group.groupKey}>
                             {multi && (
-                              <TableRow className="bg-indigo-100/85 dark:bg-indigo-950/45 border-b border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100/85 dark:hover:bg-indigo-950/45">
-                                <TableCell colSpan={11} className="py-2.5 px-6">
+                              <TableRow className="border-b border-indigo-200/70 bg-indigo-50/80 hover:bg-indigo-50/80 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/40">
+                                <TableCell colSpan={10} className="px-4 py-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Layers className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
                                     <Badge
                                       variant="outline"
-                                      className="border-indigo-400 bg-white/80 text-indigo-900 dark:border-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-100"
+                                      className="border-indigo-300 bg-white/80 text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-100"
                                     >
                                       Multi-flavour save
                                     </Badge>
@@ -922,156 +716,114 @@ export default function PackagingSessionsPage() {
                               </TableRow>
                             )}
                             {group.sessions.map((session) => {
-                        const totalOutput = session.output250ml + session.output500ml + session.output1L + session.output2L + (session.otherSizes?.reduce((sum, s) => sum + s.quantity, 0) || 0)
-                        const StatusIcon = session.status === "Completed" ? CheckCircle2 : session.status === "In Progress" ? Clock : AlertCircle
-                        const stripeIdx = sessionStripeIndex.get(session.id) ?? 0
-                        return (
-                          <TableRow
-                            key={session.id}
-                            className={cn(
-                              "group transition-all duration-200 border-b border-slate-200 dark:border-slate-800",
-                              "hover:bg-gradient-to-r hover:from-red-50/80 hover:via-red-50/40 hover:to-transparent dark:hover:from-red-950/30 dark:hover:via-red-950/15 dark:hover:to-transparent",
-                              multi && "border-l-4 border-l-indigo-400/90 dark:border-l-indigo-500",
-                              multi
-                                ? stripeIdx % 2 === 0
-                                  ? "bg-indigo-50/40 dark:bg-indigo-950/28"
-                                  : "bg-indigo-50/20 dark:bg-indigo-950/18"
-                                : stripeIdx % 2 === 0
-                                  ? "bg-white dark:bg-slate-900/50"
-                                  : "bg-slate-50/30 dark:bg-slate-900/30"
-                            )}
-                          >
-                            <TableCell className="px-6 py-4">
-                              <div className="font-semibold text-sm text-foreground group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors max-w-[280px] leading-snug">
-                                {session.sessionDisplayTitle}
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                {session.batchNumber}
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Calendar className="h-3.5 w-3.5" />
-                                <span>{session.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800/50">
-                                <span className="text-base font-bold text-blue-900 dark:text-blue-100">{session.totalLitresUsed}</span>
-                                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">L</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <div className="space-y-2.5">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {session.output250ml > 0 && (
-                                    <div className="px-3 py-2 rounded-lg bg-gradient-to-br from-fuchsia-100 to-fuchsia-200 dark:from-fuchsia-900/40 dark:to-fuchsia-800/30 border-2 border-fuchsia-300 dark:border-fuchsia-700 shadow-md hover:shadow-lg transition-shadow">
-                                      <p className="text-base font-bold text-fuchsia-900 dark:text-fuchsia-100 leading-tight">{session.output250ml}</p>
-                                      <p className="text-[10px] font-semibold text-fuchsia-700 dark:text-fuchsia-300 uppercase tracking-wide mt-0.5">250ml</p>
+                              const totalOutput = sessionTotalBottles(session)
+                              const status = statusStyle(session.status)
+                              const StatusIcon = status.Icon
+                              const tone = efficiencyTone(session.efficiency)
+                              return (
+                                <TableRow
+                                  key={session.id}
+                                  className={cn(
+                                    "group border-b border-border/70 transition-colors hover:bg-muted/40",
+                                    multi && "border-l-[3px] border-l-indigo-400 dark:border-l-indigo-500"
+                                  )}
+                                >
+                                  <TableCell className="px-4 py-3 align-top">
+                                    <div className="max-w-[300px] text-sm font-semibold leading-snug text-foreground">
+                                      {session.sessionDisplayTitle}
                                     </div>
-                                  )}
-                                  {session.output500ml > 0 && (
-                                    <div className="px-3 py-2 rounded-lg bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/30 border-2 border-purple-300 dark:border-purple-700 shadow-md hover:shadow-lg transition-shadow">
-                                      <p className="text-base font-bold text-purple-900 dark:text-purple-100 leading-tight">{session.output500ml}</p>
-                                      <p className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wide mt-0.5">500ml</p>
+                                    <div className="mt-0.5 text-xs text-muted-foreground">{session.batchNumber}</div>
+                                  </TableCell>
+                                  <TableCell className="whitespace-nowrap px-4 py-3 align-top text-sm text-muted-foreground">
+                                    {formatSessionDate(session.date)}
+                                  </TableCell>
+                                  <TableCell className="whitespace-nowrap px-4 py-3 text-right align-top text-sm font-semibold tabular-nums text-foreground">
+                                    {formatLitres(session.totalLitresUsed)}
+                                    <span className="ml-0.5 text-xs font-medium text-muted-foreground">L</span>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 align-top">
+                                    <SizeChips session={session} />
+                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                      Total{" "}
+                                      <span className="font-semibold text-foreground tabular-nums">
+                                        {totalOutput.toLocaleString()}
+                                      </span>{" "}
+                                      bottles
+                                    </p>
+                                  </TableCell>
+                                  <TableCell className="max-w-[320px] px-4 py-3 align-top">
+                                    <div className="space-y-1 text-xs">
+                                      {session.packedFlavourName && (
+                                        <p className="font-medium text-violet-800 dark:text-violet-200">
+                                          {session.packedFlavourName}
+                                        </p>
+                                      )}
+                                      {session.stickerAuditLines && session.stickerAuditLines.length > 0 ? (
+                                        <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-snug text-muted-foreground">
+                                          {session.stickerAuditLines.map((line, li) => (
+                                            <li key={li}>{line}</li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p className="text-[11px] text-muted-foreground">
+                                          {session.packedFlavourName ? "No per-size sticker log (older session)." : "—"}
+                                        </p>
+                                      )}
                                     </div>
-                                  )}
-                                  {session.output1L > 0 && (
-                                    <div className="px-3 py-2 rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-900/40 dark:to-emerald-800/30 border-2 border-emerald-300 dark:border-emerald-700 shadow-md hover:shadow-lg transition-shadow">
-                                      <p className="text-base font-bold text-emerald-900 dark:text-emerald-100 leading-tight">{session.output1L}</p>
-                                      <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide mt-0.5">1L</p>
-                                    </div>
-                                  )}
-                                  {session.output2L > 0 && (
-                                    <div className="px-3 py-2 rounded-lg bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/40 dark:to-amber-800/30 border-2 border-amber-300 dark:border-amber-700 shadow-md hover:shadow-lg transition-shadow">
-                                      <p className="text-base font-bold text-amber-900 dark:text-amber-100 leading-tight">{session.output2L}</p>
-                                      <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide mt-0.5">2L</p>
-                                    </div>
-                                  )}
-                                  {session.otherSizes && session.otherSizes.length > 0 && (
-                                    <span className="text-xs text-muted-foreground font-medium">+{session.otherSizes.length} more</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200 dark:border-slate-700">
-                                  <span className="text-xs font-medium text-muted-foreground">Total:</span>
-                                  <span className="text-sm font-bold text-foreground">{totalOutput.toLocaleString()} bottles</span>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4 align-top max-w-[320px]">
-                              <div className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                                {session.packedFlavourName && (
-                                  <p>
-                                    <span className="font-semibold text-violet-800 dark:text-violet-200">Flavour:</span>{" "}
-                                    {session.packedFlavourName}
-                                  </p>
-                                )}
-                                {session.stickerAuditLines && session.stickerAuditLines.length > 0 ? (
-                                  <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-snug text-muted-foreground">
-                                    {session.stickerAuditLines.map((line, li) => (
-                                      <li key={li}>{line}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="text-[11px] text-muted-foreground">
-                                    {session.packedFlavourName ? "No per-size sticker log (older session)." : "—"}
-                                  </p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4">
-                              <div className="flex flex-col gap-1.5">
-                                {session.teamMembers.slice(0, 2).map((member, idx) => (
-                                  <div key={idx} className="flex items-center gap-2 text-xs">
-                                    <div className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
-                                    <span className="text-slate-700 dark:text-slate-300">{member}</span>
-                                  </div>
-                                ))}
-                                {session.teamMembers.length > 2 && (
-                                  <span className="text-xs text-muted-foreground font-medium ml-3.5">+{session.teamMembers.length - 2} more</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="px-6 py-4 text-center">
-                              <Badge className={cn(
-                                "font-semibold text-xs px-2.5 py-1",
-                                session.defects > 0 ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800" : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800"
-                              )}>
-                                {session.defects}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-6 py-4 text-center">
-                              <Badge className={cn(
-                                "font-semibold text-xs px-2.5 py-1 border",
-                                session.efficiency >= 95 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800" :
-                                session.efficiency >= 90 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800" :
-                                "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800"
-                              )}>
-                                <TrendingUp className="h-3 w-3 mr-1 inline" />
-                                {session.efficiency}%
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-6 py-4 text-center">
-                              <Badge className={cn("font-semibold text-xs px-2.5 py-1 border", getStatusColor(session.status))}>
-                                <StatusIcon className="h-3 w-3 mr-1 inline" />
-                                {session.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-6 py-4 text-center">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteSession(session.id, session.sessionId)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                Delete
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        )
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 align-top">
+                                    <p className="text-xs font-medium text-foreground">{session.supervisor}</p>
+                                    <p className="text-[11px] text-muted-foreground">{session.packagingLine}</p>
+                                    {session.teamMembers.length > 0 && (
+                                      <p
+                                        className="mt-1 text-[11px] text-muted-foreground"
+                                        title={session.teamMembers.join(", ")}
+                                      >
+                                        {session.teamMembers.slice(0, 2).join(", ")}
+                                        {session.teamMembers.length > 2 && ` +${session.teamMembers.length - 2}`}
+                                      </p>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 text-center align-top">
+                                    <span
+                                      className={cn(
+                                        "inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums",
+                                        session.defects > 0
+                                          ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                                          : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                      )}
+                                    >
+                                      {session.defects}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 align-top">
+                                    <EfficiencyMeter value={session.efficiency} tone={tone} />
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 text-center align-top">
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                                        status.badge
+                                      )}
+                                    >
+                                      <StatusIcon className="h-3 w-3" />
+                                      {session.status}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-3 text-right align-top">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDeleteSession(session.id, session.sessionId)}
+                                      aria-label={`Delete ${session.sessionId}`}
+                                      title="Delete session"
+                                      className="h-8 w-8 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              )
                             })}
                           </Fragment>
                         )
@@ -1079,14 +831,375 @@ export default function PackagingSessionsPage() {
                     </TableBody>
                   </Table>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              </Card>
+            )}
           </>
         )}
       </div>
-
     </>
+  )
+}
+
+/* ════════════════════════════════════════════════════════════
+   Presentation helpers
+════════════════════════════════════════════════════════════ */
+
+const STATUS_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "Completed", label: "Completed" },
+  { value: "In Progress", label: "In progress" },
+  { value: "Pending", label: "Pending" },
+] as const
+
+function statusStyle(status: string): { badge: string; bar: string; Icon: LucideIcon } {
+  switch (status) {
+    case "Completed":
+      return {
+        badge:
+          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+        bar: "bg-emerald-500",
+        Icon: CheckCircle2,
+      }
+    case "In Progress":
+      return {
+        badge:
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300",
+        bar: "bg-amber-500",
+        Icon: Clock,
+      }
+    case "Pending":
+      return {
+        badge:
+          "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
+        bar: "bg-slate-400",
+        Icon: AlertCircle,
+      }
+    default:
+      return {
+        badge:
+          "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
+        bar: "bg-slate-400",
+        Icon: AlertCircle,
+      }
+  }
+}
+
+function efficiencyTone(value: number): { text: string; bar: string } {
+  if (value >= 95) return { text: "text-emerald-700 dark:text-emerald-300", bar: "bg-emerald-500" }
+  if (value >= 90) return { text: "text-amber-700 dark:text-amber-300", bar: "bg-amber-500" }
+  return { text: "text-red-700 dark:text-red-300", bar: "bg-red-500" }
+}
+
+function sessionTotalBottles(s: PackagingSession): number {
+  return (
+    s.output250ml +
+    s.output500ml +
+    s.output1L +
+    s.output2L +
+    (s.otherSizes?.reduce((sum, o) => sum + o.quantity, 0) || 0)
+  )
+}
+
+function formatLitres(n: number): string {
+  if (!Number.isFinite(n)) return "0"
+  return Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
+function formatSessionDate(d: Date): string {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
+
+function formatCustomSize(size: string): string {
+  const s = String(size ?? "").trim()
+  return /^\d+(\.\d+)?$/.test(s) ? `${s}ml` : s
+}
+
+function getSizeEntries(s: PackagingSession): Array<{ label: string; qty: number; dot: string }> {
+  const out: Array<{ label: string; qty: number; dot: string }> = []
+  if (s.output250ml > 0) out.push({ label: "250ml", qty: s.output250ml, dot: "bg-fuchsia-500" })
+  if (s.output500ml > 0) out.push({ label: "500ml", qty: s.output500ml, dot: "bg-purple-500" })
+  if (s.output1L > 0) out.push({ label: "1L", qty: s.output1L, dot: "bg-emerald-500" })
+  if (s.output2L > 0) out.push({ label: "2L", qty: s.output2L, dot: "bg-amber-500" })
+  for (const o of s.otherSizes ?? []) {
+    out.push({ label: formatCustomSize(o.size), qty: o.quantity, dot: "bg-slate-400" })
+  }
+  return out
+}
+
+const STAT_TONES = {
+  red: "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400",
+  emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+  amber: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
+  blue: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
+} as const
+
+function StatTile({
+  icon: Icon,
+  tone,
+  label,
+  value,
+  hint,
+}: {
+  icon: LucideIcon
+  tone: keyof typeof STAT_TONES
+  label: string
+  value: string
+  hint: string
+}) {
+  return (
+    <div className="flex items-center gap-3 p-4 sm:p-5">
+      <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", STAT_TONES[tone])}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold leading-tight tracking-tight text-foreground tabular-nums">{value}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{hint}</p>
+      </div>
+    </div>
+  )
+}
+
+function SizeChips({ session }: { session: PackagingSession }) {
+  const entries = getSizeEntries(session)
+  if (entries.length === 0) {
+    return <span className="text-xs text-muted-foreground">No output recorded</span>
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {entries.map((e, i) => (
+        <span
+          key={`${e.label}-${i}`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs"
+        >
+          <span className={cn("h-2 w-2 rounded-full", e.dot)} />
+          <span className="font-semibold text-foreground tabular-nums">{e.qty.toLocaleString()}</span>
+          <span className="text-muted-foreground">{e.label}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function EfficiencyMeter({ value, tone }: { value: number; tone: { text: string; bar: string } }) {
+  const pct = Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0))
+  return (
+    <div className="min-w-[110px]">
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className={cn("font-semibold tabular-nums", tone.text)}>{value}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className={cn("h-full rounded-full transition-all", tone.bar)} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function SessionCard({
+  session,
+  grouped,
+  onDelete,
+}: {
+  session: PackagingSession
+  grouped: boolean
+  onDelete: () => void
+}) {
+  const status = statusStyle(session.status)
+  const StatusIcon = status.Icon
+  const tone = efficiencyTone(session.efficiency)
+  const totalOutput = sessionTotalBottles(session)
+  const hasAudit =
+    Boolean(session.packedFlavourName) || Boolean(session.stickerAuditLines && session.stickerAuditLines.length > 0)
+  const teamLabel = session.teamMembers.length
+    ? `${session.teamMembers.slice(0, 2).join(", ")}${
+        session.teamMembers.length > 2 ? ` +${session.teamMembers.length - 2}` : ""
+      }`
+    : "No team listed"
+
+  return (
+    <Card
+      className={cn(
+        "group flex flex-col overflow-hidden border-border/70 bg-card py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+        grouped && "ring-1 ring-indigo-200/60 dark:ring-indigo-900/50"
+      )}
+    >
+      <div className={cn("h-1 w-full", status.bar)} />
+
+      <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold leading-snug text-foreground" title={session.sessionDisplayTitle}>
+            {session.sessionDisplayTitle}
+          </h3>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/80">{session.batchNumber}</span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {formatSessionDate(session.date)}
+            </span>
+          </div>
+        </div>
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium",
+            status.badge
+          )}
+        >
+          <StatusIcon className="h-3 w-3" />
+          {session.status}
+        </span>
+      </div>
+
+      <div className="flex-1 space-y-4 px-4 pb-4">
+        {/* Key figures */}
+        <div className="grid grid-cols-3 divide-x divide-border/70 rounded-xl bg-muted/50 py-2.5">
+          <div className="px-3">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Litres</p>
+            <p className="text-lg font-semibold leading-tight text-foreground tabular-nums">
+              {formatLitres(session.totalLitresUsed)}
+              <span className="ml-0.5 text-xs font-medium text-muted-foreground">L</span>
+            </p>
+          </div>
+          <div className="px-3">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Bottles</p>
+            <p className="text-lg font-semibold leading-tight text-foreground tabular-nums">
+              {totalOutput.toLocaleString()}
+            </p>
+          </div>
+          <div className="px-3">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Defects</p>
+            <p
+              className={cn(
+                "text-lg font-semibold leading-tight tabular-nums",
+                session.defects > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+              )}
+            >
+              {session.defects}
+            </p>
+          </div>
+        </div>
+
+        {/* Output by size */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Output by size</p>
+          <SizeChips session={session} />
+        </div>
+
+        {/* Efficiency */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+              <TrendingUp className="h-3 w-3" />
+              Efficiency
+            </span>
+            <span className={cn("font-semibold tabular-nums", tone.text)}>{session.efficiency}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full transition-all", tone.bar)}
+              style={{ width: `${Math.min(100, Math.max(0, session.efficiency))}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Sticker audit (collapsed to keep cards short) */}
+        {hasAudit && (
+          <details className="group/audit rounded-xl border border-violet-200 bg-violet-50/60 dark:border-violet-900/60 dark:bg-violet-950/20">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-violet-800 marker:hidden dark:text-violet-200 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0 truncate">
+                {session.packedFlavourName ? `Flavour: ${session.packedFlavourName}` : "Stickers consumed (audit)"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open/audit:rotate-180" />
+            </summary>
+            <div className="border-t border-violet-200/70 px-3 py-2 dark:border-violet-900/50">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                Stickers consumed (audit)
+              </p>
+              {session.stickerAuditLines && session.stickerAuditLines.length > 0 ? (
+                <ul className="mt-1.5 space-y-1 text-xs text-violet-900 dark:text-violet-100">
+                  {session.stickerAuditLines.map((line, i) => (
+                    <li key={i} className="leading-snug">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Line-level detail not stored for this session (older record).
+                </p>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-2 border-t border-border/70 bg-muted/30 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          <Users className="h-3.5 w-3.5 shrink-0" />
+          <div className="min-w-0 leading-tight">
+            <p className="truncate font-medium text-foreground/90" title={session.supervisor}>
+              {session.supervisor}
+              <span className="font-normal text-muted-foreground"> · {session.packagingLine}</span>
+            </p>
+            <p className="truncate text-[11px]" title={session.teamMembers.join(", ")}>
+              {teamLabel}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          aria-label={`Delete ${session.sessionId}`}
+          title="Delete session"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </Card>
+  )
+}
+
+function PageSkeleton() {
+  return (
+    <div className="space-y-5" aria-busy="true" aria-label="Loading packaging sessions">
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <div className="grid grid-cols-2 divide-x divide-y divide-border/70 lg:grid-cols-4 lg:divide-y-0">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 p-4 sm:p-5">
+              <Skeleton className="h-11 w-11 rounded-xl" />
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-14" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Skeleton className="h-[66px] w-full rounded-xl" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="overflow-hidden border-border/70 py-0 shadow-sm">
+            <Skeleton className="h-1 w-full rounded-none" />
+            <div className="space-y-4 p-4">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-16 w-full rounded-xl" />
+              <div className="flex gap-2">
+                <Skeleton className="h-7 w-20 rounded-md" />
+                <Skeleton className="h-7 w-20 rounded-md" />
+                <Skeleton className="h-7 w-16 rounded-md" />
+              </div>
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
   )
 }

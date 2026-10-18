@@ -119,6 +119,13 @@ async function handleMultiFlavourPackagingPost(
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
   }
 
+  if (batch.batchClosed === true) {
+    return NextResponse.json(
+      { error: `Batch ${batch.batchNumber || ''} was cleared and is closed. Reopen it from the Batches page to package it.` },
+      { status: 409 }
+    )
+  }
+
   const hasFlavourLines =
     !batch.parentBatchId &&
     (await db.collection(JABA_FLAVOUR_LINES_COLLECTION).countDocuments({ parentBatchId: batchId })) > 0
@@ -296,6 +303,12 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Batch not found' },
         { status: 404 }
+      )
+    }
+    if (batch.batchClosed === true) {
+      return NextResponse.json(
+        { error: `Batch ${batch.batchNumber || ''} was cleared and is closed. Reopen it from the Batches page to package it.` },
+        { status: 409 }
       )
     }
 
@@ -591,6 +604,9 @@ export async function POST(request: Request) {
         // Re-read current batch inside transaction for concurrency-safe update.
         const txBatch = await db.collection('jaba_batches').findOne({ _id: new ObjectId(batchId) }, { session: mongoSession })
         if (!txBatch) throw new ApiError('Batch not found', 404)
+        if (txBatch.batchClosed === true) {
+          throw new ApiError('This batch was cleared and is closed. Reopen it from the Batches page to package it.', 409)
+        }
 
         if (flavourLineId) {
           const txLine = await db.collection(JABA_FLAVOUR_LINES_COLLECTION).findOne({ _id: new ObjectId(flavourLineId) }, { session: mongoSession })
@@ -852,6 +868,27 @@ export async function DELETE(request: Request) {
     const packagingOutput = await db.collection('jaba_packagingOutput').findOne({ _id: new ObjectId(id) })
     if (!packagingOutput) {
       return NextResponse.json({ error: 'Packaging output not found' }, { status: 404 })
+    }
+
+    // A cleared batch's stock was written off per packaging session — reopen it before deleting sessions.
+    const ownerBatchId = String(packagingOutput.batchId || '')
+    if (ownerBatchId && ObjectId.isValid(ownerBatchId)) {
+      const ownerBatch = await db
+        .collection('jaba_batches')
+        .findOne({ _id: new ObjectId(ownerBatchId) }, { projection: { batchClosed: 1, parentBatchId: 1 } })
+      let closed = ownerBatch?.batchClosed === true
+      if (!closed && ownerBatch?.parentBatchId && ObjectId.isValid(String(ownerBatch.parentBatchId))) {
+        const parentOfOwner = await db
+          .collection('jaba_batches')
+          .findOne({ _id: new ObjectId(String(ownerBatch.parentBatchId)) }, { projection: { batchClosed: 1 } })
+        closed = parentOfOwner?.batchClosed === true
+      }
+      if (closed) {
+        return NextResponse.json(
+          { error: 'This batch was cleared and is closed. Reopen it from the Batches page before deleting its packaging sessions.' },
+          { status: 409 }
+        )
+      }
     }
 
     const containers = Array.isArray(packagingOutput.containers) ? packagingOutput.containers : []

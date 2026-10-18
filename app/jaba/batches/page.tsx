@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, Edit, Truck, Plus, Search, Filter, Factory, TrendingUp, Package, CheckSquare, Hash, Tag, LayoutGrid, List, Loader2, X, Save, Boxes, Warehouse, Lock, ChevronDown, ChevronUp, PackageX, FlaskConical, GitBranch } from "lucide-react"
+import { Eye, Edit, Truck, Plus, Search, Filter, Factory, TrendingUp, Package, CheckSquare, Hash, Tag, LayoutGrid, List, Loader2, X, Save, Boxes, Warehouse, Lock, ChevronDown, ChevronUp, PackageX, FlaskConical, GitBranch, Eraser } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -17,6 +17,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label"
 import { useJabaPermissions } from "@/hooks/use-jaba-permissions"
 import { countAvailableBottlesForFlavourRow } from "@/lib/jaba-flavour-lines"
+import { ClearOldBatchesDialog } from "@/components/jaba/clear-old-batches-dialog"
+import type { BatchClosureRecord } from "@/lib/jaba-batch-closure-types"
 interface FlavourOutputRow {
   _id: string
   id: string
@@ -38,6 +40,7 @@ interface FlavourOutputRow {
   notes?: string | null
   isLegacyChildBatch?: boolean
   legacyChildBatchId?: string
+  closedAsLoss?: boolean
 }
 
 interface Batch {
@@ -102,6 +105,9 @@ interface Batch {
     totalPackagedLitres: number
     totalDistributedLitres: number
   }
+  /** Set when the batch was cleared via "Clear old batches". */
+  batchClosed?: boolean
+  closure?: BatchClosureRecord
 }
 
 type DeleteIntent = {
@@ -189,6 +195,7 @@ export default function BatchesPage() {
   const [deleteOtp, setDeleteOtp] = useState("")
   const [deleteOtpSent, setDeleteOtpSent] = useState(false)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+  const [showClearOld, setShowClearOld] = useState(false)
   const toggleBatchExpand = (bid: string) => {
     if (!bid) return
     setExpandedBatchIds((prev) => {
@@ -615,7 +622,12 @@ export default function BatchesPage() {
     )
   }
 
+  /** Litres below this count as "nothing left" (float noise, e.g. 0.30000000000000004 - 0.3). */
+  const LITRE_TOLERANCE = 1e-6
+
   const isBatchSoldOut = (batch: Batch): boolean => {
+    // Cleared via "Clear old batches": leftover was written off, the batch is finished.
+    if (batch.batchClosed) return true
     const kids = batch.flavourOutputs || []
     const remainingLitres = batch.outputSummary?.remainingLitres ?? 0
     const availableStock = getAvailableStock(batch)
@@ -635,11 +647,15 @@ export default function BatchesPage() {
       return availableStock === 0
     }
 
-    return remainingLitres === 0 && availableStock === 0
+    return remainingLitres <= LITRE_TOLERANCE && availableStock === 0
   }
+
+  /** Badge text for a finished batch: "CLEARED" when written off, "SOLD OUT" when fully sold. */
+  const soldOutLabel = (batch: Batch): string => (batch.batchClosed ? "CLEARED" : "SOLD OUT")
 
   // Calculate available stock for a batch (packaged - distributed)
   const getAvailableStock = (batch: Batch): number => {
+    if (batch.batchClosed) return 0
     const kids = batch.flavourOutputs || []
     if (kids.length > 0 && !batch.parentBatchId) {
       return kids.reduce(
@@ -758,6 +774,8 @@ export default function BatchesPage() {
         return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"
       case "Fully Distributed":
         return "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
+      case "Closed":
+        return "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300"
       case "Created":
         return "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300"
       case "QC Passed - Ready for Packaging":
@@ -839,6 +857,17 @@ export default function BatchesPage() {
           <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mt-0.5">Manage and track production batches</p>
         </div>
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <Button
+              variant="outline"
+              onClick={() => setShowClearOld(true)}
+              className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30"
+              title="Close out old batches that never sold out because of a small leftover"
+            >
+              <Eraser className="mr-2 h-4 w-4" />
+              Clear Old Batches
+            </Button>
+          )}
           {canCreate && (
             <Link href="/jaba/batches/add">
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
@@ -1265,7 +1294,7 @@ export default function BatchesPage() {
                                 return (
                                   <div className="mt-1.5 inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 shadow-sm">
                                     <PackageX className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
-                                    <span className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">SOLD OUT</span>
+                                    <span className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">{soldOutLabel(batch)}</span>
                                   </div>
                                 )
                               }
@@ -1306,7 +1335,7 @@ export default function BatchesPage() {
                                   ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800"
                                   : getStatusColor(batch.status)
                               )}>
-                                {isSoldOut ? "SOLD OUT" : batch.status}
+                                {isSoldOut ? soldOutLabel(batch) : batch.status}
                               </Badge>
                             )
                           })()}
@@ -1391,7 +1420,7 @@ export default function BatchesPage() {
                                     size="sm"
                                     disabled
                                     className="h-8 w-8 p-0 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
-                                    title={isSoldOut ? "Batch sold out" : "Batch locked after processing"}
+                                    title={isSoldOut ? (batch.batchClosed ? "Batch cleared" : "Batch sold out") : "Batch locked after processing"}
                                   >
                                     <Lock className="h-4 w-4" />
                                   </Button>
@@ -1589,7 +1618,7 @@ export default function BatchesPage() {
                           ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800"
                           : getStatusColor(batch.status)
                       )}>
-                        {isSoldOut ? "SOLD OUT" : batch.status}
+                        {isSoldOut ? soldOutLabel(batch) : batch.status}
                       </Badge>
                     </div>
                   </CardHeader>
@@ -1631,7 +1660,7 @@ export default function BatchesPage() {
                           return (
                             <div className="mt-3 inline-flex items-center gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 shadow-sm">
                               <PackageX className="h-4 w-4 text-red-600 dark:text-red-400" />
-                              <span className="text-sm font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">SOLD OUT</span>
+                              <span className="text-sm font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide">{soldOutLabel(batch)}</span>
                             </div>
                           )
                         }
@@ -1758,10 +1787,10 @@ export default function BatchesPage() {
                               size="sm"
                               disabled
                               className="flex-1 h-9 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 text-xs font-medium"
-                              title={isSoldOutGrid ? "Batch sold out" : "Batch locked after processing"}
+                              title={isSoldOutGrid ? (batch.batchClosed ? "Batch cleared" : "Batch sold out") : "Batch locked after processing"}
                             >
                               <Lock className="h-3.5 w-3.5 mr-1.5" />
-                              {isSoldOutGrid ? "Sold Out" : "Locked"}
+                              {isSoldOutGrid ? (batch.batchClosed ? "Cleared" : "Sold Out") : "Locked"}
                             </Button>
                           )
                         }
@@ -2259,6 +2288,13 @@ export default function BatchesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ClearOldBatchesDialog
+        open={showClearOld}
+        onOpenChange={setShowClearOld}
+        clearedBatches={batches.filter((b) => b.batchClosed && b.closure)}
+        onChanged={fetchBatches}
+      />
     </>
   )
 }

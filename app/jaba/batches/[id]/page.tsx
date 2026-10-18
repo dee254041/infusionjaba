@@ -299,6 +299,26 @@ export default function BatchDetailsPage({ params }: { params: Promise<{ id: str
       </header>
 
       <div className="p-6 bg-gradient-to-br from-slate-50 via-background to-slate-50 dark:from-slate-950 dark:via-background dark:to-slate-950 min-h-screen">
+        {batch.batchClosed && batch.closure && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-200">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-semibold">
+                This batch was cleared on {new Date(batch.closure.closedAt).toLocaleDateString()}
+                {batch.closure.closedByEmail ? ` by ${batch.closure.closedByEmail}` : ""}.
+              </p>
+              <p>
+                Reason: {batch.closure.reason}
+                {batch.closure.note ? ` — “${batch.closure.note}”` : ""}. Written off{" "}
+                {Number(batch.closure.totalLossLitres || 0).toFixed(2)} L
+                {Number(batch.closure.totalBottleCount || 0) > 0
+                  ? ` including ${Number(batch.closure.totalBottleCount).toLocaleString()} undelivered bottles`
+                  : ""}
+                . It can be reopened from Batches → Clear Old Batches → Already cleared.
+              </p>
+            </div>
+          </div>
+        )}
         <Card className="mb-6 overflow-hidden border-violet-200/80 bg-gradient-to-r from-violet-50 via-fuchsia-50/60 to-indigo-50/70 shadow-md dark:border-violet-900/50 dark:from-violet-950/30 dark:via-fuchsia-950/20 dark:to-indigo-950/20">
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

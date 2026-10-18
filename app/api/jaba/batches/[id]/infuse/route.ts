@@ -60,6 +60,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Only the master batch can have flavour lines' }, { status: 400 })
     }
 
+    if (parent.batchClosed === true) {
+      return NextResponse.json(
+        { error: 'This batch was cleared and is closed. Reopen it before allocating flavours.' },
+        { status: 409 }
+      )
+    }
+
     if (isLegacyFlavourFirstBatch(parent)) {
       return NextResponse.json(
         {

@@ -238,6 +238,24 @@ export function buildPackagedSlots(packagingOutputs: unknown[], batches: unknown
 
   const slots: FifoPackagedSlot[] = []
 
+  /**
+   * Stock written off by "Clear old batches": the closure on the root batch lists the bottles that were
+   * still in stock at that moment per slot. Removing them from qtyPackaged keeps the delivered quantity
+   * (so past delivery notes stay valid/editable) while making the written-off bottles undeliverable.
+   */
+  const writtenOffBySlot = new Map<string, number>()
+  for (const b of batches as Record<string, unknown>[]) {
+    if (b.batchClosed !== true) continue
+    const closure = (b.closure ?? null) as { writtenOffSlots?: unknown } | null
+    const list = Array.isArray(closure?.writtenOffSlots) ? (closure!.writtenOffSlots as unknown[]) : []
+    for (const raw of list) {
+      const e = raw as { slotId?: unknown; quantity?: unknown }
+      const sid = String(e?.slotId || '')
+      const q = Number(e?.quantity) || 0
+      if (sid && q > 0) writtenOffBySlot.set(sid, (writtenOffBySlot.get(sid) || 0) + q)
+    }
+  }
+
   for (const po of packagingOutputs as Record<string, unknown>[]) {
     const batchId = String(po.batchId || '')
     const batch = batchById.get(batchId)
@@ -260,9 +278,12 @@ export function buildPackagedSlots(packagingOutputs: unknown[], batches: unknown
 
     for (const c of containers as Record<string, unknown>[]) {
       const size = normalizeSize(String(c.size || '500ml'))
-      const qty = Number(c.quantity) || 0
-      if (!(qty > 0)) continue
+      const rawQty = Number(c.quantity) || 0
+      if (!(rawQty > 0)) continue
       const slotId = `${poOid}|${size}`
+      const qty = Math.max(0, rawQty - (writtenOffBySlot.get(slotId) || 0))
+      // Fully written-off slot with nothing ever delivered from it: drop it.
+      if (!(qty > 0)) continue
       slots.push({
         slotId,
         packagingOutputId: poOid,

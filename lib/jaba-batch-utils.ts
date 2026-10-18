@@ -47,8 +47,11 @@ export function getNeutralRemainingLitres(batch: {
   status?: string
   batchType?: string
   parentBatchId?: string | null
+  /** Batch was cleared via "Clear old batches" — nothing is left to allocate. */
+  batchClosed?: boolean
 }): number {
   if (batch.parentBatchId || normalizeBatchType(batch) === "flavoured") return 0
+  if (batch.batchClosed) return 0
   const produced = getNeutralProducedLitres(batch)
   const allocated = getInfusedAllocated(batch)
   return Math.max(0, produced - allocated)

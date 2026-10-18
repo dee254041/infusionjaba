@@ -126,6 +126,16 @@ export async function GET(request: Request) {
         }
       })
 
+    // Bottles written off when old batches were cleared as loss are no longer in stock.
+    batches.forEach((b: any) => {
+      if (b.batchClosed !== true) return
+      const wo = (b.closure?.writtenOffBottles ?? {}) as Record<string, unknown>
+      finishedGoodsStock250ml = Math.max(0, finishedGoodsStock250ml - (Number(wo['250ml']) || 0))
+      finishedGoodsStock500ml = Math.max(0, finishedGoodsStock500ml - (Number(wo['500ml']) || 0))
+      finishedGoodsStock1L = Math.max(0, finishedGoodsStock1L - (Number(wo['1L']) || 0))
+      finishedGoodsStock2L = Math.max(0, finishedGoodsStock2L - (Number(wo['2L']) || 0))
+    })
+
     // Raw materials stats
     const currentRawMaterials = rawMaterials.length
     const lowStockMaterials = rawMaterials.filter((rm: any) => 

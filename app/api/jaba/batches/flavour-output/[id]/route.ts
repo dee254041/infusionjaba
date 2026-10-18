@@ -10,6 +10,9 @@ import { requireDeleteOtp } from '@/lib/jaba-delete-otp-guard'
 
 export const runtime = 'nodejs'
 
+const CLOSED_MESSAGE =
+  'This batch was cleared and is closed. Reopen it from the Batches page before changing its flavour lines.'
+
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireJabaAction('production.batches', 'edit')
   if ('response' in authResult) return authResult.response
@@ -43,6 +46,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         return NextResponse.json({ error: 'Parent batch missing' }, { status: 400 })
       }
       const p = parent as Record<string, any>
+      if (p.batchClosed === true) {
+        return NextResponse.json({ error: CLOSED_MESSAGE }, { status: 409 })
+      }
 
       const oldQty = Number(line.allocatedLitres) || 0
       if (hasLinkedRecords && Math.abs(newQty - oldQty) > 1e-6) {
@@ -110,6 +116,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Parent batch missing' }, { status: 400 })
     }
     const par = parent as Record<string, any>
+    if (par.batchClosed === true) {
+      return NextResponse.json({ error: CLOSED_MESSAGE }, { status: 409 })
+    }
 
     const oldQty = Number(ch.infusedQuantityLitres ?? ch.totalLitres) || 0
     const linkedPackagingCount = await db.collection('jaba_packagingOutput').countDocuments({
@@ -208,6 +217,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
       const qty = Number(line.allocatedLitres) || 0
       const parentId = String(line.parentBatchId)
+      const parentForGuard = await db
+        .collection('jaba_batches')
+        .findOne({ _id: new ObjectId(parentId) }, { projection: { batchClosed: 1 } })
+      if (parentForGuard?.batchClosed === true) {
+        return NextResponse.json({ error: CLOSED_MESSAGE }, { status: 409 })
+      }
       await db.collection(JABA_FLAVOUR_LINES_COLLECTION).deleteOne({ _id: new ObjectId(id) })
 
       const parent = await db.collection('jaba_batches').findOne({ _id: new ObjectId(parentId) })
@@ -260,6 +275,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const qty = Number(child.infusedQuantityLitres ?? child.totalLitres) || 0
     const parentId = child.parentBatchId
+
+    const parentForGuard = await db
+      .collection('jaba_batches')
+      .findOne({ _id: new ObjectId(parentId) }, { projection: { batchClosed: 1 } })
+    if (parentForGuard?.batchClosed === true) {
+      return NextResponse.json({ error: CLOSED_MESSAGE }, { status: 409 })
+    }
 
     await db.collection('jaba_batches').deleteOne({ _id: new ObjectId(id) })
 

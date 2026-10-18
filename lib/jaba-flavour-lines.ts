@@ -35,6 +35,8 @@ export type JabaFlavourLineWorkflowStatus =
   | "Packaged"
   | "Partially Distributed"
   | "Fully Distributed"
+  /** Leftover cleared as loss via "Clear old batches". */
+  | "Closed"
 
 export function bottleRowToLitres(qty: number, size: string): number {
   const q = Number(qty) || 0
@@ -170,6 +172,10 @@ export interface EnrichedFlavourRow {
   isLegacyChildBatch: boolean
   /** Present only for legacy rows — child batch document id */
   legacyChildBatchId?: string
+  /** True once the parent batch was cleared (leftover written off as loss). */
+  closedAsLoss?: boolean
+  writtenOffUnpackedLitres?: number
+  writtenOffPackagedLitres?: number
 }
 
 export function buildEnrichedFlavourRow(
@@ -186,6 +192,9 @@ export function buildEnrichedFlavourRow(
     legacyBatchNumber?: string
     manualInfusing?: boolean | null
     createdAt?: Date
+    closedAsLoss?: boolean
+    writtenOffUnpackedLitres?: number
+    writtenOffPackagedLitres?: number
   },
   packagingOutputs: JabaLooseDoc[],
   deliveryNotes: JabaLooseDoc[]
@@ -200,14 +209,13 @@ export function buildEnrichedFlavourRow(
     legacyBatchNumber: base.legacyBatchNumber,
   })
   const alloc = Math.max(0, Number(base.allocatedLitres) || 0)
-  const remainingPackLitres = Math.max(0, alloc - packagedLitres)
-  const remainingDistributeLitres = Math.max(0, packagedLitres - distributedLitres)
-  const workflowStatus = deriveFlavourLineWorkflowStatus(
-    alloc,
-    packagedLitres,
-    distributedLitres,
-    base.manualInfusing
-  )
+  const closedAsLoss = base.closedAsLoss === true
+  // A cleared line has nothing left to pack or distribute, whatever the raw numbers say.
+  const remainingPackLitres = closedAsLoss ? 0 : Math.max(0, alloc - packagedLitres)
+  const remainingDistributeLitres = closedAsLoss ? 0 : Math.max(0, packagedLitres - distributedLitres)
+  const workflowStatus: JabaFlavourLineWorkflowStatus = closedAsLoss
+    ? "Closed"
+    : deriveFlavourLineWorkflowStatus(alloc, packagedLitres, distributedLitres, base.manualInfusing)
   const row: EnrichedFlavourRow & { createdAt?: string } = {
     _id: id,
     id,
@@ -230,6 +238,11 @@ export function buildEnrichedFlavourRow(
     isLegacyChildBatch: base.isLegacyChildBatch,
     legacyChildBatchId: base.legacyChildBatchId,
   }
+  if (closedAsLoss) {
+    row.closedAsLoss = true
+    row.writtenOffUnpackedLitres = Math.max(0, Number(base.writtenOffUnpackedLitres) || 0)
+    row.writtenOffPackagedLitres = Math.max(0, Number(base.writtenOffPackagedLitres) || 0)
+  }
   if (base.createdAt instanceof Date) {
     ;(row as JabaLooseDoc).createdAt = base.createdAt.toISOString()
   }
@@ -242,6 +255,7 @@ export function countAvailableBottlesForFlavourRow(
   packagingOutputs: JabaLooseDoc[],
   deliveryNotes: JabaLooseDoc[]
 ): number {
+  if (row.closedAsLoss) return 0
   let p500 = 0
   let p1 = 0
   let p2 = 0
@@ -326,6 +340,9 @@ export function mergeFlavourRowsFromCaches(
             isLegacyChildBatch: false,
             manualInfusing,
             createdAt: doc.createdAt instanceof Date ? doc.createdAt : undefined,
+            closedAsLoss: doc.closedAsLoss === true,
+            writtenOffUnpackedLitres: Number(doc.writtenOffUnpackedLitres) || 0,
+            writtenOffPackagedLitres: Number(doc.writtenOffPackagedLitres) || 0,
           },
           packagingOutputs,
           deliveryNotes
@@ -356,6 +373,9 @@ export function mergeFlavourRowsFromCaches(
             legacyBatchNumber: bn,
             manualInfusing: null,
             createdAt: child.createdAt instanceof Date ? child.createdAt : undefined,
+            closedAsLoss: child.closedAsLoss === true,
+            writtenOffUnpackedLitres: Number(child.writtenOffUnpackedLitres) || 0,
+            writtenOffPackagedLitres: Number(child.writtenOffPackagedLitres) || 0,
           },
           packagingOutputs,
           deliveryNotes
