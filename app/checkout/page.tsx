@@ -15,7 +15,12 @@ import {
   ArrowLeft, Check, Smartphone, Loader2, MapPin, Store,
   Shield, Truck, Wine, LogIn, Phone, User, Info, Navigation,
 } from "lucide-react"
-import { buildGoogleMapsUrl } from "@/lib/order-delivery-location"
+import {
+  buildGoogleMapsUrl,
+  isPhoneOrTabletDevice,
+  isPinAccurateEnough,
+  MAX_PIN_ACCURACY_METERS,
+} from "@/lib/order-delivery-location"
 import { toast } from "sonner"
 import { calculateCartTotals } from "@/lib/ecommerce/pricing"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
@@ -84,6 +89,13 @@ export default function CheckoutPage() {
   const [geoLoading, setGeoLoading] = useState(false)
   const [geoError, setGeoError] = useState<string | null>(null)
   const geoWatchRef = useRef<number | null>(null)
+  /** Live accuracy (metres) while GPS is still settling. */
+  const [geoLiveAccuracy, setGeoLiveAccuracy] = useState<number | null>(null)
+  /** GPS pin is offered on phones/tablets only — laptops/desktops are too inaccurate. */
+  const [canUseGps, setCanUseGps] = useState(false)
+  useEffect(() => {
+    setCanUseGps(isPhoneOrTabletDevice())
+  }, [])
   const [pickupAddress, setPickupAddress] = useState(DEFAULT_PICKUP)
   const [pickupDirectionsUrl, setPickupDirectionsUrl] = useState("")
 
@@ -277,51 +289,68 @@ export default function CheckoutPage() {
 
   const captureGeoPin = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setGeoError("Your browser does not support location. Enter a detailed address below.")
+      setGeoError("Your browser does not support location. Please enter your apartment / building name below.")
       return
     }
     stopGeoWatch()
     setGeoLoading(true)
     setGeoError(null)
+    setGeoPin(null)
+    setGeoLiveAccuracy(null)
 
+    // Best fix seen so far. It is only ever saved as the pin if it is accurate to 30 m or better.
     let best: { lat: number; lng: number; accuracy: number | null } | null = null
     let finished = false
+
+    const refuse = (accuracy: number | null) => {
+      setGeoPin(null)
+      setGeoError(
+        accuracy != null
+          ? `Your location is only accurate to ±${Math.round(accuracy)}m — we need ${MAX_PIN_ACCURACY_METERS}m or better. Step outside or near a window and try again, or just enter your apartment / building name below.`
+          : `We couldn't get an accurate location. Try again outdoors, or just enter your apartment / building name below.`
+      )
+    }
+
     const finish = () => {
       if (finished) return
       finished = true
       stopGeoWatch()
       clearTimeout(timer)
       setGeoLoading(false)
-      if (best) {
+      setGeoLiveAccuracy(null)
+      if (best && isPinAccurateEnough(best.accuracy)) {
         setGeoPin(best)
-        toast.success(
-          best.accuracy != null
-            ? `Location captured (±${Math.round(best.accuracy)}m)`
-            : "Location captured"
-        )
+        toast.success(`Location pinned (±${Math.round(best.accuracy as number)}m)`)
+      } else {
+        refuse(best?.accuracy ?? null)
       }
     }
-    // Keep sampling for a few seconds so we get the most accurate fix, then stop.
+
+    // Give GPS time to settle (cold start can take a while), then judge the best fix we got.
     const timer = setTimeout(() => {
+      if (finished) return
       if (!best) {
         finished = true
         stopGeoWatch()
         setGeoLoading(false)
-        setGeoError("Could not get your location in time. Check GPS is on and try again.")
+        setGeoLiveAccuracy(null)
+        setGeoError(
+          "Could not get your location in time. Check GPS is on and try again, or just enter your apartment / building name below."
+        )
       } else {
         finish()
       }
-    }, 12_000)
+    }, 20_000)
 
     geoWatchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const accuracy = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null
         if (!best || (accuracy != null && (best.accuracy == null || accuracy < best.accuracy))) {
           best = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy }
-          setGeoPin(best)
+          setGeoLiveAccuracy(accuracy)
         }
-        // Good enough fix — stop early
-        if (accuracy != null && accuracy <= 30) finish()
+        // Accurate enough — stop right away.
+        if (isPinAccurateEnough(accuracy)) finish()
       },
       (err) => {
         if (finished) return
@@ -330,15 +359,16 @@ export default function CheckoutPage() {
         stopGeoWatch()
         clearTimeout(timer)
         setGeoLoading(false)
+        setGeoLiveAccuracy(null)
         setGeoError(
           err.code === 1
-            ? "Location permission denied. Allow location for this site, or enter a detailed address below."
+            ? "Location permission denied. Allow location for this site, or just enter your apartment / building name below."
             : err.code === 2
-              ? "Location unavailable. Turn on GPS and try again, or enter a detailed address below."
-              : "Could not get your location. Try again or enter a detailed address below."
+              ? "Location unavailable. Turn on GPS and try again, or just enter your apartment / building name below."
+              : "Could not get your location. Try again or just enter your apartment / building name below."
         )
       },
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 }
     )
   }
 
@@ -349,13 +379,14 @@ export default function CheckoutPage() {
     if (!isPhoneValid) { toast.error("Please enter a valid 9-digit number after +254"); phoneRef.current?.focus(); return }
     if (!selectedDelivery) { toast.error("Please select a delivery option"); return }
     if (showLocationInput) {
-      if (!geoPin && !geoError) {
-        toast.error("Tap “Use my current location” so we can find you precisely")
-        return
-      }
-      if (!locationNote.trim()) { toast.error("Please enter your building, estate or landmark"); return }
-      if (!geoPin && locationNote.trim().length < 10) {
-        toast.error("Location is off — please enter a detailed address (building, street, estate, landmark)")
+      // Either an accurate (≤ 30 m) GPS pin, or the apartment / building name.
+      const hasAccuratePin = Boolean(geoPin) && isPinAccurateEnough(geoPin?.accuracy)
+      if (!hasAccuratePin && locationNote.trim().length < 3) {
+        toast.error(
+          canUseGps
+            ? `Pin your location (accurate to ${MAX_PIN_ACCURACY_METERS}m) or enter your apartment / building name`
+            : "Please enter your apartment / building name so our rider can find you"
+        )
         return
       }
     }
@@ -682,60 +713,70 @@ export default function CheckoutPage() {
 
                 {showLocationInput && (
                   <div className="mt-4 pt-4 border-t border-[#e2d2bd] space-y-3">
-                    <div className="space-y-2">
-                      <Label className="text-[#2e2621] font-bold text-sm">Your exact location *</Label>
-                      <Button
-                        type="button"
-                        onClick={captureGeoPin}
-                        disabled={geoLoading}
-                        variant="outline"
-                        className={cn(
-                          "w-full h-12 rounded-xl border-2 font-bold",
-                          geoPin
-                            ? "border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                            : "border-[#a47a43] bg-[#fff6e8] text-[#6b4d1f] hover:bg-[#fbe9cc]"
+                    {canUseGps && (
+                      <div className="space-y-2">
+                        <Label className="text-[#2e2621] font-bold text-sm">Pin your exact location</Label>
+                        <Button
+                          type="button"
+                          onClick={captureGeoPin}
+                          disabled={geoLoading}
+                          variant="outline"
+                          className={cn(
+                            "w-full h-12 rounded-xl border-2 font-bold",
+                            geoPin
+                              ? "border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                              : "border-[#a47a43] bg-[#fff6e8] text-[#6b4d1f] hover:bg-[#fbe9cc]"
+                          )}
+                        >
+                          {geoLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              {geoLiveAccuracy != null
+                                ? `Getting a precise fix… ±${Math.round(geoLiveAccuracy)}m`
+                                : "Getting your location…"}
+                            </>
+                          ) : geoPin ? (
+                            <><Check className="mr-2 h-4 w-4" /> Location pinned — tap to refresh</>
+                          ) : (
+                            <><Navigation className="mr-2 h-4 w-4" /> Use my current location</>
+                          )}
+                        </Button>
+                        {geoPin && (
+                          <p className="text-xs text-emerald-800">
+                            Pinned{geoPin.accuracy != null ? ` (±${Math.round(geoPin.accuracy)}m)` : ""}.{" "}
+                            <a
+                              href={buildGoogleMapsUrl(geoPin.lat, geoPin.lng)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-semibold underline"
+                            >
+                              Check on map
+                            </a>
+                          </p>
                         )}
-                      >
-                        {geoLoading ? (
-                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Getting your location…</>
-                        ) : geoPin ? (
-                          <><Check className="mr-2 h-4 w-4" /> Location pinned — tap to refresh</>
-                        ) : (
-                          <><Navigation className="mr-2 h-4 w-4" /> Use my current location</>
-                        )}
-                      </Button>
-                      {geoPin && (
-                        <p className="text-xs text-emerald-800">
-                          Pinned{geoPin.accuracy != null ? ` (±${Math.round(geoPin.accuracy)}m)` : ""}.{" "}
-                          <a
-                            href={buildGoogleMapsUrl(geoPin.lat, geoPin.lng)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-semibold underline"
-                          >
-                            Check on map
-                          </a>
-                          {geoPin.accuracy != null && geoPin.accuracy > 150
-                            ? " — accuracy is low; move outdoors or near a window and refresh."
-                            : ""}
+                        {geoError && !geoPin && <p className="text-xs text-red-600">{geoError}</p>}
+                        <p className="text-[11px] text-[#7f786f]">
+                          Allow location access when asked. We only accept a pin accurate to {MAX_PIN_ACCURACY_METERS}m or
+                          better — otherwise just type your apartment / building name below.
                         </p>
-                      )}
-                      {geoError && !geoPin && <p className="text-xs text-red-600">{geoError}</p>}
-                      <p className="text-[11px] text-[#7f786f]">
-                        Allow location access when your browser asks. This lets our rider find you without calling.
-                      </p>
-                    </div>
+                      </div>
+                    )}
                     <div className="space-y-1.5">
                       <Label htmlFor="locationOrArea" className="text-[#2e2621] font-bold text-sm">
-                        Building / estate / landmark *
+                        Apartment / building name {canUseGps && geoPin ? "(optional)" : "*"}
                       </Label>
                       <Input
                         id="locationOrArea"
                         value={locationNote}
                         onChange={e => setLocationNote(e.target.value)}
                         className="h-13 rounded-xl border-2 border-[#d8c8b2] bg-[#fffcf6] focus-visible:border-[#9b7740]/55 focus-visible:ring-2 focus-visible:ring-[#9b7740]/18 text-[#2a201b] placeholder:text-[#8d877f]"
-                        placeholder="e.g. Karen, Lavington, Westlands"
+                        placeholder="e.g. Haven Court, Kilimani — Block B, Door 4"
                       />
+                      {!canUseGps && (
+                        <p className="text-[11px] text-[#7f786f]">
+                          Include the apartment or building name, estate and any landmark so our rider can find you.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

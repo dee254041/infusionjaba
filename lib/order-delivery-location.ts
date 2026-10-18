@@ -19,6 +19,29 @@ export type OrderDeliveryInfo = {
   phone: string | null
 }
 
+/** A GPS pin is only accepted when the device reports an accuracy of this many metres or better. */
+export const MAX_PIN_ACCURACY_METERS = 30
+
+/** True when a pin's reported accuracy is good enough to send a rider to (≤ 30 m). */
+export function isPinAccurateEnough(accuracy: number | null | undefined): boolean {
+  return typeof accuracy === 'number' && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= MAX_PIN_ACCURACY_METERS
+}
+
+/**
+ * Browser-only: true on phones and tablets (devices with a real GPS chip).
+ * Laptops/desktops locate by Wi-Fi/IP and are often hundreds of metres off, so the pin feature is hidden there.
+ */
+export function isPhoneOrTabletDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } }
+  if (nav.userAgentData?.mobile === true) return true
+  const ua = nav.userAgent || ''
+  if (/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle|CriOS|FxiOS/i.test(ua)) return true
+  // iPadOS 13+ reports itself as a Mac but has multi-touch.
+  if (/Macintosh/i.test(ua) && (nav.maxTouchPoints || 0) > 1) return true
+  return false
+}
+
 export function isValidLatLng(lat: unknown, lng: unknown): boolean {
   const la = Number(lat)
   const ln = Number(lng)

@@ -5,7 +5,7 @@
  */
 
 import { pickCartLineIntent } from '@/lib/shop-cart-normalize'
-import { parseDeliveryLocation } from '@/lib/order-delivery-location'
+import { isPinAccurateEnough, parseDeliveryLocation } from '@/lib/order-delivery-location'
 
 function pickMinimalLine(raw: unknown): Record<string, unknown> | null {
   const base = pickCartLineIntent(raw)
@@ -53,8 +53,9 @@ export function normalizeEcommerceOrderCreateBody(body: unknown): unknown {
     if (Number.isFinite(n)) out.deliveryFee = n
   }
 
+  // Only keep pins accurate to 30 m or better; anything vaguer is dropped (the address text is used instead).
   const loc = parseDeliveryLocation(b.deliveryLocation)
-  if (loc) {
+  if (loc && isPinAccurateEnough(loc.accuracy)) {
     out.deliveryLocation = {
       lat: loc.lat,
       lng: loc.lng,
