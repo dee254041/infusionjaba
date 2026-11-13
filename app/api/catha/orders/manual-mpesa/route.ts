@@ -8,6 +8,7 @@ import {
 import { submitManualMpesaVerification } from '@/lib/catha-manual-mpesa-verification'
 import { maybeSendManualMpesaApprovalSms } from '@/lib/catha-manual-mpesa-approval-sms'
 import { requireActiveShiftForSessionUser } from '@/lib/catha-shift-service'
+import { getLoungeTradingStatus } from '@/lib/catha-trading-hours'
 import { logOrderSecurityEvent } from '@/lib/order-security-audit'
 import { queueCathaAuditLog } from '@/lib/catha-audit-log'
 import { getClientIp } from '@/lib/rate-limit-simple'
@@ -52,6 +53,11 @@ export async function POST(request: Request) {
       allowSuperAdmin: true,
       allowedStatuses: ['ACTIVE'],
     })
+    const trading = await getLoungeTradingStatus()
+    if (!trading.open) {
+      return NextResponse.json({ error: trading.message, code: 'LOUNGE_CLOSED' }, { status: 403 })
+    }
+
     if (!shiftGuard.ok) {
       queueCathaAuditLog({
         type: 'SECURITY',

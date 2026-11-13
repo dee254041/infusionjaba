@@ -417,6 +417,8 @@ export default function OrdersPage() {
   const [manualTxLookupLoading, setManualTxLookupLoading] = useState(false)
   const [debouncedManualTxCode, setDebouncedManualTxCode] = useState("")
   const [manualTxConfirmed, setManualTxConfirmed] = useState(false)
+  const [loungeClosed, setLoungeClosed] = useState(false)
+  const [loungeClosedMessage, setLoungeClosedMessage] = useState("")
   const mpesaPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const mpesaCandidatesLoadModeRef = useRef<"recent" | "exact">("recent")
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
@@ -649,6 +651,29 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!mounted) return
+    let stop = false
+    const load = async () => {
+      try {
+        const res = await fetch("/api/catha/trading-hours", { cache: "no-store" })
+        if (!res.ok || stop) return
+        const data = await res.json()
+        if (stop) return
+        setLoungeClosed(data?.open === false)
+        setLoungeClosedMessage(typeof data?.message === "string" ? data.message : "")
+      } catch {
+        /* server still refuses new sales when closed */
+      }
+    }
+    void load()
+    const id = window.setInterval(load, 60_000)
+    return () => {
+      stop = true
+      window.clearInterval(id)
+    }
+  }, [mounted])
+
+  useEffect(() => {
+    if (!mounted) return
 
     let cancelled = false
     ;(async () => {
@@ -760,6 +785,10 @@ export default function OrdersPage() {
   }
 
   const handleSaveEdit = async () => {
+    if (loungeClosed) {
+      toast.error(loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time.")
+      return
+    }
     if (!editingOrder || !draftStatus || !draftPayment) return
 
     // Recalculate totals based on draft items
@@ -855,6 +884,10 @@ export default function OrdersPage() {
   }
 
   const handleSaveItemsToOrder = async () => {
+    if (loungeClosed) {
+      toast.error(loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time.")
+      return
+    }
     if (!addingItemsToOrder || newItems.length === 0) return
 
     // Convert newItems to full item objects with product details
@@ -1229,6 +1262,10 @@ export default function OrdersPage() {
   }
 
   const handleManualMpesaSubmit = async () => {
+    if (loungeClosed) {
+      toast.error(loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time.")
+      return
+    }
     if (!processingPayment || manualTxSubmitting) return
     const code = manualTxCode.trim().toUpperCase().replace(/\s+/g, "")
     if (!code) {
@@ -3421,6 +3458,11 @@ export default function OrdersPage() {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t px-6 pb-4 sm:pb-6 flex-shrink-0 bg-muted/20">
+              {loungeClosed && (
+                <p className="sm:mr-auto text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time."}
+                </p>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -3435,7 +3477,7 @@ export default function OrdersPage() {
               </Button>
               <Button
                 onClick={handleSaveItemsToOrder}
-                disabled={newItems.length === 0}
+                disabled={loungeClosed || newItems.length === 0}
                 size="sm"
                 className="w-full sm:w-auto min-w-32 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-xs sm:text-sm"
               >
@@ -3916,14 +3958,19 @@ export default function OrdersPage() {
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
+            <div className="flex flex-col sm:flex-row sm:justify-end gap-2 pt-2 border-t">
+              {loungeClosed && (
+                <p className="sm:mr-auto text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time."}
+                </p>
+              )}
               <Button variant="outline" onClick={() => {
                 setEditingOrder(null)
                 setDraftItems([])
               }}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveEdit} disabled={!draftStatus || !draftPayment || draftItems.length === 0}>
+              <Button onClick={handleSaveEdit} disabled={loungeClosed || !draftStatus || !draftPayment || draftItems.length === 0}>
                 Save Changes
               </Button>
             </div>
@@ -4455,6 +4502,11 @@ export default function OrdersPage() {
                     const codeReady = manualTxCode.trim().replace(/\s+/g, "").length >= 3
                     return (
                     <div className="space-y-4 rounded-lg border bg-background p-4">
+                      {loungeClosed && (
+                        <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          {loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time."}
+                        </p>
+                      )}
                       <p className="text-sm text-muted-foreground leading-relaxed">
                         Recover a payment when Safaricom completed it but the callback failed. Submitted entries go to manager approval.
                       </p>
@@ -4705,6 +4757,7 @@ export default function OrdersPage() {
                 <Button
                   onClick={() => void handleManualMpesaSubmit()}
                   disabled={
+                    loungeClosed ||
                     manualTxSubmitting ||
                     !manualTxCode.trim() ||
                     !manualTxAmount.trim() ||

@@ -60,6 +60,12 @@ export function buildGoogleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`
 }
 
+/** Search link from a written address. SMS apps turn the https URL into a tap target. */
+export function buildGoogleMapsSearchUrl(query: string): string {
+  const q = query.replace(/^deliver to:\s*/i, '').trim()
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q || query.trim())}`
+}
+
 export function parseDeliveryLocation(raw: unknown): DeliveryLocation | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -95,7 +101,9 @@ export function getOrderDeliveryInfo(order: unknown): OrderDeliveryInfo | null {
     ? buildGoogleMapsUrl(location.lat, location.lng)
     : storedUrl.startsWith('https://')
       ? storedUrl
-      : null
+      : address
+        ? buildGoogleMapsSearchUrl(address)
+        : null
 
   if (!address && !notes && !location && !mapsUrl) return null
   return { address, notes, option, location, mapsUrl, phone }
@@ -108,6 +116,6 @@ export function formatDeliveryForSms(order: unknown): string {
   const parts: string[] = []
   if (info.address) parts.push(`Deliver: ${info.address}`)
   if (info.notes) parts.push(`Note: ${info.notes}`)
-  if (info.mapsUrl) parts.push(`Map: ${info.mapsUrl}`)
+  if (info.mapsUrl) parts.push(info.mapsUrl)
   return parts.join('\n')
 }

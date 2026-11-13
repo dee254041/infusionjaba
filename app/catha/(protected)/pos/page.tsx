@@ -327,6 +327,8 @@ export default function POSPage() {
   const [cashierId, setCashierId] = useState("1")
   const [waiterId, setWaiterId] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
+  const [loungeClosed, setLoungeClosed] = useState(false)
+  const [loungeClosedMessage, setLoungeClosedMessage] = useState("")
   const [showReceipt, setShowReceipt] = useState(false)
   const [showTablePanel, setShowTablePanel] = useState(false)
   const [showCategories, setShowCategories] = useState(false)
@@ -440,6 +442,28 @@ export default function POSPage() {
   // Ensure component only renders fully on client
   useEffect(() => {
     setIsMounted(true)
+  }, [])
+
+  useEffect(() => {
+    let stop = false
+    const load = async () => {
+      try {
+        const res = await fetch("/api/catha/trading-hours", { cache: "no-store" })
+        if (!res.ok || stop) return
+        const data = await res.json()
+        if (stop) return
+        setLoungeClosed(data?.open === false)
+        setLoungeClosedMessage(typeof data?.message === "string" ? data.message : "")
+      } catch {
+        /* server still refuses new sales when closed */
+      }
+    }
+    void load()
+    const id = window.setInterval(load, 60_000)
+    return () => {
+      stop = true
+      window.clearInterval(id)
+    }
   }, [])
 
   // Set logged-in user as waiter by default (for accountability)
@@ -1390,6 +1414,10 @@ export default function POSPage() {
   }, [pendingMpesaOrderId, mpesaCheckoutRequestId])
 
   const handleMpesaPayment = async () => {
+    if (loungeClosed) {
+      toast.error(loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time.")
+      return
+    }
     if (!mpesaPhoneNumber.trim()) {
       toast.error("Please enter a phone number")
       return
@@ -1549,6 +1577,10 @@ export default function POSPage() {
   }
 
   const handleConfirmGlovoPayment = async () => {
+    if (loungeClosed) {
+      toast.error(loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time.")
+      return
+    }
     if (isProcessingGlovoPayment || orderSubmitInFlightRef.current) return
     const normalizedGlovoOrderNumber = glovoOrderNumber.trim()
     if (!normalizedGlovoOrderNumber) {
@@ -1644,6 +1676,10 @@ export default function POSPage() {
   }
 
   const handleCheckout = async (method: string) => {
+    if (loungeClosed) {
+      toast.error(loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time.")
+      return
+    }
     if ((method === "pay-later" || method === "cash" || method === "card") && orderSubmitInFlightRef.current) {
       return
     }
@@ -2431,6 +2467,12 @@ export default function POSPage() {
                 </div>
               </div>
 
+              {loungeClosed && (
+                <p className="text-xs font-medium text-center text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {loungeClosedMessage || "The lounge is closed. New transactions open again at the next opening time."}
+                </p>
+              )}
+
               {cart.length > 0 && orderType === "INHOUSE" && !selectedTable && (
                 <p className="text-xs text-destructive font-medium text-center">
                   Enter table number for inhouse orders
@@ -2448,7 +2490,7 @@ export default function POSPage() {
                     handleCheckout("pay-later")
                     setShowCart(false)
                   }}
-                  disabled={cart.length === 0 || (orderType === "INHOUSE" && !selectedTable) || isOrderSubmitting}
+                  disabled={loungeClosed || cart.length === 0 || (orderType === "INHOUSE" && !selectedTable) || isOrderSubmitting}
                   variant="outline"
                   className="flex-1 min-h-[48px] h-12 text-sm font-bold rounded-xl border border-border bg-card hover:bg-muted text-foreground touch-manipulation"
                 >
@@ -2473,7 +2515,7 @@ export default function POSPage() {
                     handleCheckout("glovo")
                     setShowCart(false)
                   }}
-                  disabled={cart.length === 0 || (orderType === "INHOUSE" && !selectedTable) || isOrderSubmitting || isProcessingGlovoPayment}
+                  disabled={loungeClosed || cart.length === 0 || (orderType === "INHOUSE" && !selectedTable) || isOrderSubmitting || isProcessingGlovoPayment}
                   className="flex-1 min-h-[48px] h-12 text-sm font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white touch-manipulation"
                 >
                   <Truck className="h-4 w-4 mr-1.5 shrink-0" />
@@ -2498,7 +2540,7 @@ export default function POSPage() {
                       handleCheckout("mpesa")
                       setShowCart(false)
                     }}
-                    disabled={cart.length === 0 || (orderType === "INHOUSE" && !selectedTable) || isOrderSubmitting || mpesaProcessing}
+                    disabled={loungeClosed || cart.length === 0 || (orderType === "INHOUSE" && !selectedTable) || isOrderSubmitting || mpesaProcessing}
                     className="flex-1 min-h-[48px] h-12 text-sm font-bold rounded-xl bg-blue-500 hover:bg-blue-600 text-white touch-manipulation"
                   >
                     <Smartphone className="h-4 w-4 mr-1.5 shrink-0" />

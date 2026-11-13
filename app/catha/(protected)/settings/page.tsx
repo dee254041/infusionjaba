@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { useSession } from "next-auth/react"
 import { toast as sonnerToast } from "sonner"
 import { staff } from "@/lib/dummy-data"
 import { Building, Users, Bell, Shield, Printer, Receipt, Smartphone, Loader2, Truck, MapPin, Store, Clock, Plus, Trash2, Activity, AlertTriangle, RefreshCw, Lock, ShieldCheck, MessageSquare } from "lucide-react"
@@ -175,6 +176,8 @@ const DEFAULT_DELIVERY_OPTIONS: DeliveryOption[] = [
 
 export default function SettingsPage() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const isSuperAdmin = String(session?.user?.role || "").trim().toUpperCase() === "SUPER_ADMIN"
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   
@@ -273,6 +276,7 @@ export default function SettingsPage() {
   const [authHealth, setAuthHealth] = useState<AuthHealthResponse | null>(null)
   const [shiftOpeningTime, setShiftOpeningTime] = useState("08:00")
   const [shiftClosingTime, setShiftClosingTime] = useState("23:00")
+  const [blockAfterHoursTransactions, setBlockAfterHoursTransactions] = useState(true)
   const [noShiftReminderMinutes, setNoShiftReminderMinutes] = useState(10)
   const [noShiftHardAlertMinutes, setNoShiftHardAlertMinutes] = useState(20)
   const [autoCloseGraceHours, setAutoCloseGraceHours] = useState(2)
@@ -748,6 +752,7 @@ export default function SettingsPage() {
           const continueWindow = Number(shiftSettingsData.settings.continuePromptWindowHours)
           if (/^\d{2}:\d{2}$/.test(openAt)) setShiftOpeningTime(openAt)
           if (/^\d{2}:\d{2}$/.test(closeAt)) setShiftClosingTime(closeAt)
+          setBlockAfterHoursTransactions(shiftSettingsData.settings.blockAfterHoursTransactions !== false)
           if (Number.isFinite(reminderMin)) setNoShiftReminderMinutes(Math.max(1, Math.round(reminderMin)))
           if (Number.isFinite(hardMin)) setNoShiftHardAlertMinutes(Math.max(2, Math.round(hardMin)))
           if (Number.isFinite(graceHours)) setAutoCloseGraceHours(Math.max(1, Math.round(graceHours)))
@@ -1086,6 +1091,38 @@ export default function SettingsPage() {
     }
   }
 
+  const saveAfterHoursLock = async (enabled: boolean) => {
+    const previous = blockAfterHoursTransactions
+    setBlockAfterHoursTransactions(enabled)
+    setSaving(true)
+    try {
+      const response = await fetch("/api/catha/shift-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blockAfterHoursTransactions: enabled }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to update after-hours lock")
+      }
+      toast({
+        title: enabled ? "After-hours lock on" : "After-hours lock off",
+        description: enabled
+          ? "POS and Orders will refuse new transactions outside opening hours."
+          : "POS and Orders can add transactions at any time.",
+      })
+    } catch (error: any) {
+      setBlockAfterHoursTransactions(previous)
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update after-hours lock",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const saveShiftReminderSettings = async () => {
     const reminder = Math.max(1, Math.round(Number(noShiftReminderMinutes) || 0))
     const hardAlert = Math.max(2, Math.round(Number(noShiftHardAlertMinutes) || 0))
@@ -1118,6 +1155,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           openingTime,
           closingTime,
+          blockAfterHoursTransactions,
           noShiftReminderMinutes: reminder,
           noShiftHardAlertMinutes: hardAlert,
           autoCloseGraceHours: graceHours,
@@ -1940,6 +1978,22 @@ export default function SettingsPage() {
                         Set workforce clock-in schedule and reminder thresholds.
                       </p>
                     </div>
+                    {isSuperAdmin && (
+                      <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-muted/30 px-3 py-3">
+                        <div>
+                          <Label htmlFor="block-after-hours">Block new transactions after closing</Label>
+                          <p className="text-sm text-muted-foreground">
+                            When on, POS and Orders cannot add sales or manual M-Pesa entries until the next opening time.
+                          </p>
+                        </div>
+                        <Switch
+                          id="block-after-hours"
+                          checked={blockAfterHoursTransactions}
+                          disabled={saving}
+                          onCheckedChange={(checked) => void saveAfterHoursLock(checked)}
+                        />
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label htmlFor="shift-opening-time">Shift opening time (24h HH:mm)</Label>

@@ -158,6 +158,28 @@ export type DistributorRestockAlert = {
   label: string
 }
 
+export type DistributorOrderLine = {
+  name: string
+  size: string
+  quantity: number
+}
+
+export type DistributorOrderRecord = {
+  noteId: string
+  orderedAt: string
+  items: DistributorOrderLine[]
+}
+
+export type DistributorDirectoryEntry = {
+  id: string
+  name: string
+  phone: string
+  region: string
+  county: string | null
+  lastOrderedAt: string | null
+  history: DistributorOrderRecord[]
+}
+
 export type JabaAiContext = {
   generatedAt: string
   sources: string[]
@@ -178,6 +200,8 @@ export type JabaAiContext = {
   distributorIntel: DistributorIntel
   /** Distributors with no delivery in about a month. */
   distributorRestockAlerts: DistributorRestockAlert[]
+  /** Every distributor, with county and full delivery history. */
+  distributorDirectory: DistributorDirectoryEntry[]
   /** Compact strings for optional LLM / chat (no PII) */
   chatHints: {
     topLowStockMaterials: string[]

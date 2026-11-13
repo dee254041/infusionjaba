@@ -111,6 +111,7 @@ export const ecommerceOrderCreateSchema = z
   .object({
     id: z.string().max(64).optional(),
     customerName: z.string().max(300).optional(),
+    customerPhone: z.string().max(40).optional(),
     customerEmail: z.string().max(320).optional(),
     deliveryAddress: z.string().max(2000).optional(),
     city: z.string().max(200).optional(),

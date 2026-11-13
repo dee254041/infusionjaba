@@ -50,12 +50,17 @@ export async function PUT(request: Request) {
     168,
     current.continuePromptWindowHours
   )
+  const blockAfterHoursTransactions =
+    typeof body.blockAfterHoursTransactions === 'boolean'
+      ? body.blockAfterHoursTransactions
+      : current.blockAfterHoursTransactions !== false
   const settings = await saveShiftSettings({
     ...body,
     noShiftReminderMinutes,
     noShiftHardAlertMinutes,
     autoCloseGraceHours,
     continuePromptWindowHours,
+    blockAfterHoursTransactions,
     updatedBy: auth.user.email,
   })
   return NextResponse.json({ ok: true, settings })

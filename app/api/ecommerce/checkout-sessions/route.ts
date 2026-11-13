@@ -25,6 +25,7 @@ import {
 } from '@/lib/ecommerce-opening-hours'
 import { trackAnalyticsEvent } from '@/lib/commerce-analytics'
 import { nairobiDeliveryBlockReason } from '@/lib/ecommerce-nairobi-delivery'
+import { normalizeKenyaPhone } from '@/lib/phone-utils'
 
 async function resolveDeliveryFeeKes(
   db: Awaited<ReturnType<typeof getDatabase>>,
@@ -186,6 +187,7 @@ export async function POST(request: Request) {
       postalCode: (body.postalCode ?? '').trim(),
       deliveryNotes: (body.deliveryNotes ?? '').trim(),
       deliveryOption: body.deliveryOption?.trim() || null,
+      contactPhone: normalizeKenyaPhone(body.customerPhone),
       deliveryLocation: body.deliveryLocation
         ? {
             lat: body.deliveryLocation.lat,

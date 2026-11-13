@@ -3,6 +3,8 @@ import clientPromise from '@/lib/mongodb'
 export interface ShiftSettings {
   openingTime: string
   closingTime: string
+  /** When true, POS and Orders refuse new sales outside opening hours. */
+  blockAfterHoursTransactions: boolean
   graceLatenessMinutes: number
   autoReminders: boolean
   noShiftReminderMinutes: number
@@ -26,6 +28,7 @@ const SETTINGS_ID = 'catha_shift_settings'
 export const DEFAULT_SHIFT_SETTINGS: ShiftSettings = {
   openingTime: '08:00',
   closingTime: '23:00',
+  blockAfterHoursTransactions: true,
   graceLatenessMinutes: 5,
   autoReminders: true,
   noShiftReminderMinutes: 10,
@@ -53,6 +56,7 @@ export async function getShiftSettings(): Promise<ShiftSettings> {
   return {
     openingTime: doc.openingTime ?? DEFAULT_SHIFT_SETTINGS.openingTime,
     closingTime: doc.closingTime ?? DEFAULT_SHIFT_SETTINGS.closingTime,
+    blockAfterHoursTransactions: doc.blockAfterHoursTransactions !== false,
     graceLatenessMinutes: Number(doc.graceLatenessMinutes ?? DEFAULT_SHIFT_SETTINGS.graceLatenessMinutes),
     autoReminders: Boolean(doc.autoReminders ?? DEFAULT_SHIFT_SETTINGS.autoReminders),
     noShiftReminderMinutes: Number(doc.noShiftReminderMinutes ?? DEFAULT_SHIFT_SETTINGS.noShiftReminderMinutes),

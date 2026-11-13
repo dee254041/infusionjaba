@@ -73,7 +73,7 @@ export function findDistributorsWithoutRecentStock(
         phone: String(distributor.phone || '').trim(),
         daysSinceStock: null,
         lastStockedAt: null,
-        label: 'No delivery on record',
+        label: 'Never ordered',
       })
       continue
     }

@@ -22,6 +22,7 @@ import {
   buildRecommendations,
 } from '@/lib/jaba-ai-rules'
 import { findDistributorsWithoutRecentStock } from '@/lib/jaba-distributor-restock-alerts'
+import { buildDistributorOrderDirectory } from '@/lib/jaba-distributor-directory'
 
 function originFromRequest(request: Request): string {
   const u = new URL(request.url)
@@ -191,12 +192,14 @@ export async function buildJabaAiContext(request: Request): Promise<JabaAiContex
   const distributorsList = Array.isArray(distributorsRaw.distributors)
     ? (distributorsRaw.distributors as Record<string, unknown>[])
     : []
+  const notesForDistributors = deliveryNotesList as Record<string, unknown>[]
   const distributorRestockAlerts =
     sources.includes('delivery-notes') && sources.includes('distributors')
-      ? findDistributorsWithoutRecentStock(
-          distributorsList,
-          deliveryNotesList as Record<string, unknown>[]
-        )
+      ? findDistributorsWithoutRecentStock(distributorsList, notesForDistributors)
+      : []
+  const distributorDirectory =
+    sources.includes('delivery-notes') && sources.includes('distributors')
+      ? buildDistributorOrderDirectory(distributorsList, notesForDistributors)
       : []
 
   const rawMat = (byKey['raw-materials'] ?? {}) as { materials?: unknown[] }
@@ -420,6 +423,7 @@ export async function buildJabaAiContext(request: Request): Promise<JabaAiContex
     supplierIntel,
     distributorIntel,
     distributorRestockAlerts,
+    distributorDirectory,
     chatHints: {
       topLowStockMaterials: lowNames,
       topFlavours: charts.topFlavours.slice(0, 5).map((f) => f.flavor),

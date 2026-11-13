@@ -34,6 +34,6 @@ describe('findDistributorsWithoutRecentStock', () => {
       now
     )
     expect(alerts.map((a) => a.name)).toEqual(['Old Route'])
-    expect(alerts[0].label).toBe('No delivery on record')
+    expect(alerts[0].label).toBe('Never ordered')
   })
 })

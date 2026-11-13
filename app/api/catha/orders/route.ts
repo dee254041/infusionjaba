@@ -4,6 +4,7 @@ import { getDatabase } from '@/lib/mongodb'
 import { auth } from '@/lib/auth-catha'
 import { normalizePermissions, hasCathaPermission } from '@/lib/catha-permissions-model'
 import { requireActiveShiftForSessionUser } from '@/lib/catha-shift-service'
+import { getLoungeTradingStatus } from '@/lib/catha-trading-hours'
 
 // Mutations (create/update/delete) must never be cached - money/stock changes
 function noStoreJson(data: unknown, init?: ResponseInit) {
@@ -325,6 +326,10 @@ export async function POST(request: Request) {
     allowSuperAdmin: true,
     allowedStatuses: ['ACTIVE'],
   })
+  const trading = await getLoungeTradingStatus()
+  if (!trading.open) {
+    return NextResponse.json({ error: trading.message, code: 'LOUNGE_CLOSED' }, { status: 403 })
+  }
   if (!shiftGuard.ok) {
     logOrderSecurityEvent({
       route: '/api/catha/orders',
@@ -696,6 +701,13 @@ export async function PUT(request: Request) {
       return NextResponse.json(formatZodError(parsedPut.error), { status: 400 })
     }
     const db = await getDatabase('infusion_jaba')
+
+    if (Object.prototype.hasOwnProperty.call(parsedPut.data, 'items')) {
+      const trading = await getLoungeTradingStatus()
+      if (!trading.open) {
+        return NextResponse.json({ error: trading.message, code: 'LOUNGE_CLOSED' }, { status: 403 })
+      }
+    }
 
     const { id, ...updateData } = parsedPut.data as Record<string, unknown> & { id: string }
     // Never persist client-supplied order clock

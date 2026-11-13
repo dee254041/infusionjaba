@@ -4,6 +4,7 @@ import { ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION } from '@/lib/ecommerce-checkout
 import { logEcommerceRecoveryCritical } from '@/lib/ecommerce-stock-reservation'
 import { maybeSendOnlineOrderSms } from '@/lib/catha-online-order-sms'
 import { buildGoogleMapsUrl, parseDeliveryLocation } from '@/lib/order-delivery-location'
+import { normalizeKenyaPhone } from '@/lib/phone-utils'
 
 export type EcommerceCheckoutSessionSnapshot = {
   customerName: string
@@ -14,6 +15,8 @@ export type EcommerceCheckoutSessionSnapshot = {
   deliveryNotes: string
   deliveryOption: string | null
   deliveryLocation?: { lat: number; lng: number; accuracy?: number | null } | null
+  /** Dialable number typed at checkout. Google sign-in ids are not a phone. */
+  contactPhone?: string | null
   items: unknown[]
   subtotal: number
   vat: number
@@ -152,13 +155,15 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
   const orderId = newEcommerceOrderId()
   const now = new Date()
   const deliveryLocation = parseDeliveryLocation(snap.deliveryLocation)
+  const contactPhone =
+    normalizeKenyaPhone(snap.contactPhone) || normalizeKenyaPhone(session.customerPhone) || ''
   const order = {
     id: orderId,
     type: 'ecommerce' as const,
     orderSource: 'online' as const,
     sourceCheckoutSessionId: session.id,
     customerName: snap.customerName,
-    customerPhone: session.customerPhone,
+    customerPhone: contactPhone,
     customerEmail: snap.customerEmail,
     deliveryAddress: snap.deliveryAddress,
     city: snap.city,
@@ -240,7 +245,7 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
     id: orderId,
     total: snap.total,
     customerName: snap.customerName,
-    customerPhone: session.customerPhone,
+    customerPhone: contactPhone,
     tableNumber: snap.deliveryOption || 'E-commerce',
     deliveryAddress: snap.deliveryAddress,
     deliveryNotes: snap.deliveryNotes,

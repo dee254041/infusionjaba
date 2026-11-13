@@ -1,8 +1,13 @@
 'use client'
 
-import { useCallback, useState, type ComponentType, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import type { JabaAiContext } from '@/lib/jaba-ai-intelligence-types'
+import type { DistributorDirectoryEntry, JabaAiContext } from '@/lib/jaba-ai-intelligence-types'
+import {
+  COUNTY_NOT_SET,
+  formatDistributorOrderWhen,
+  groupDistributorsByCounty,
+} from '@/lib/jaba-distributor-directory'
 import { useJabaAiActionState } from '@/hooks/use-jaba-ai-action-state'
 import { JabaAiBusinessCommander } from '@/components/jaba/ai-intelligence/jaba-ai-commander'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -40,7 +45,12 @@ import {
   CalendarClock,
   GitCompare,
   Users,
+  Info,
+  MapPin,
+  Phone,
 } from 'lucide-react'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 const CHART_COLORS = {
   primary: '#0d9488',
@@ -101,29 +111,53 @@ function KpiCard({
   )
 }
 
-function DistributorRestockPanel({
-  alerts,
+function OrderLines({ lines }: { lines: DistributorDirectoryEntry['history'][number]['items'] }) {
+  if (lines.length === 0) {
+    return <p className="text-sm text-slate-500">No line items were saved on this delivery.</p>
+  }
+  return (
+    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950">
+      {lines.map((line, index) => (
+        <li key={`${line.name}-${line.size}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{line.name}</p>
+            {line.size ? <p className="text-xs text-slate-500">{line.size}</p> : null}
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            × {line.quantity}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function DistributorDirectoryPanel({
+  directory,
   onOpenList,
 }: {
-  alerts: JabaAiContext['distributorRestockAlerts']
+  directory: DistributorDirectoryEntry[]
   onOpenList: () => void
 }) {
-  const shown = alerts.slice(0, 8)
-  const extra = alerts.length - shown.length
+  const groups = useMemo(() => groupDistributorsByCounty(directory), [directory])
+  const [selected, setSelected] = useState<DistributorDirectoryEntry | null>(null)
+  const neverOrdered = directory.filter((row) => !row.lastOrderedAt).length
+  const lastOrder = selected?.history[0] ?? null
+
   return (
-    <Card className="border-amber-200/90 bg-amber-50/70 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+    <Card className="border-slate-200/90 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg text-amber-950 dark:text-amber-100">
-              <Users className="h-5 w-5" />
-              Distributors to restock
-              <Badge variant="outline" className="border-amber-300 bg-white text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-                {alerts.length}
+            <CardTitle className="flex items-center gap-2 text-lg text-slate-900 dark:text-white">
+              <Users className="h-5 w-5 text-emerald-700" />
+              Distributors
+              <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                {directory.length}
               </Badge>
             </CardTitle>
-            <CardDescription className="mt-1 text-amber-900/80 dark:text-amber-100/80">
-              No delivery in the last 30 days. These partners may be out of stock.
+            <CardDescription className="mt-1 max-w-xl">
+              Every partner, grouped by county. Open a county to see the last order, then tap info for that order and the full history.
             </CardDescription>
           </div>
           <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" onClick={onOpenList}>
@@ -131,44 +165,155 @@ function DistributorRestockPanel({
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
+        {directory.length > 0 && (
+          <p className="text-xs text-slate-500">
+            {groups.filter((group) => group.county !== COUNTY_NOT_SET).length} counties
+            {neverOrdered > 0 ? ` · ${neverOrdered} never ordered` : ''}
+          </p>
+        )}
       </CardHeader>
       <CardContent>
-        {alerts.length === 0 ? (
-          <p className="text-sm text-slate-700 dark:text-slate-200">
-            Every distributor has been stocked in the last 30 days.
-          </p>
+        {directory.length === 0 ? (
+          <p className="text-sm text-slate-600 dark:text-slate-300">No distributors are on file yet.</p>
         ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {shown.map((alert) => (
-              <li
-                key={alert.id}
-                className="rounded-xl border border-amber-200/80 bg-white px-3 py-3 dark:border-amber-900/40 dark:bg-slate-950/40"
+          <Accordion type="multiple" className="space-y-2">
+            {groups.map((group) => (
+              <AccordionItem
+                key={group.county}
+                value={group.county}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70 px-3 last:border-b dark:border-slate-800 dark:bg-slate-950/40"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-semibold text-slate-900 dark:text-white">{alert.name}</p>
-                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
-                    {alert.label}
+                <AccordionTrigger className="py-3 hover:no-underline">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-emerald-700" />
+                    <span className="truncate font-semibold text-slate-900 dark:text-white">{group.county}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+                      {group.distributors.length}
+                    </span>
                   </span>
-                </div>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                  {alert.region || 'No region'}
-                  {alert.phone ? (
-                    <>
-                      {' · '}
-                      <a href={`tel:${alert.phone}`} className="font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-300">
-                        {alert.phone}
-                      </a>
-                    </>
-                  ) : null}
-                </p>
-              </li>
+                </AccordionTrigger>
+                <AccordionContent className="pb-3">
+                  <ul className="space-y-2">
+                    {group.distributors.map((row) => {
+                      const when = formatDistributorOrderWhen(row.lastOrderedAt)
+                      const quiet = !row.lastOrderedAt
+                      return (
+                        <li
+                          key={row.id}
+                          className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-slate-900 dark:text-white">{row.name}</p>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                              {row.phone ? (
+                                <a
+                                  href={`tel:${row.phone}`}
+                                  className="inline-flex items-center gap-1 font-medium text-emerald-800 hover:underline dark:text-emerald-300"
+                                >
+                                  <Phone className="h-3 w-3" />
+                                  {row.phone}
+                                </a>
+                              ) : (
+                                <span>No phone</span>
+                              )}
+                              {row.region && row.county ? <span>· {row.region}</span> : null}
+                            </p>
+                            <p className={cn('mt-1 text-xs font-semibold sm:hidden', quiet ? 'text-slate-500' : 'text-emerald-800 dark:text-emerald-200')}>
+                              {quiet ? 'Never ordered' : when}
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              'hidden max-w-[11rem] shrink-0 rounded-full px-2.5 py-1 text-right text-[11px] font-semibold leading-snug sm:inline',
+                              quiet
+                                ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                : 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100'
+                            )}
+                          >
+                            {quiet ? 'Never ordered' : when}
+                          </span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9 shrink-0 rounded-full"
+                            aria-label={`Order history for ${row.name}`}
+                            onClick={() => setSelected(row)}
+                          >
+                            <Info className="h-4 w-4" />
+                          </Button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </ul>
-        )}
-        {extra > 0 && (
-          <p className="mt-3 text-xs font-medium text-amber-900 dark:text-amber-100">+{extra} more on the distributor list</p>
+          </Accordion>
         )}
       </CardContent>
+
+      <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+          {selected && (
+            <>
+              <DialogHeader className="border-b border-slate-100 px-6 py-5 pr-12 text-left dark:border-slate-800">
+                <DialogTitle className="text-xl">{selected.name}</DialogTitle>
+                <DialogDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>{selected.county || COUNTY_NOT_SET}</span>
+                  {selected.phone ? (
+                    <a href={`tel:${selected.phone}`} className="font-medium text-emerald-800 hover:underline dark:text-emerald-300">
+                      {selected.phone}
+                    </a>
+                  ) : null}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6 overflow-y-auto px-6 py-5">
+                <section>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Last order</p>
+                  {lastOrder ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {formatDistributorOrderWhen(lastOrder.orderedAt)}
+                      </p>
+                      <OrderLines lines={lastOrder.items} />
+                    </div>
+                  ) : (
+                    <p className="mt-2 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                      Never ordered
+                    </p>
+                  )}
+                </section>
+                <section>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Full history
+                    {selected.history.length > 0 ? ` · ${selected.history.length}` : ''}
+                  </p>
+                  {selected.history.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Never ordered</p>
+                  ) : (
+                    <ol className="mt-2 space-y-3">
+                      {selected.history.map((order, index) => (
+                        <li key={`${order.noteId}-${order.orderedAt}-${index}`} className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950/50">
+                          <div className="mb-2 flex items-baseline justify-between gap-3">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {formatDistributorOrderWhen(order.orderedAt)}
+                            </p>
+                            {order.noteId ? (
+                              <span className="font-mono text-[11px] text-slate-500">{order.noteId}</span>
+                            ) : null}
+                          </div>
+                          <OrderLines lines={order.items} />
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
@@ -469,8 +614,8 @@ export function JabaAiIntelligenceView({
         </Button>
       </div>
 
-      <DistributorRestockPanel
-        alerts={data.distributorRestockAlerts ?? []}
+      <DistributorDirectoryPanel
+        directory={data.distributorDirectory ?? []}
         onOpenList={() => router.push('/jaba/distributors')}
       />
 

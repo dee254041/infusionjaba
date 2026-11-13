@@ -434,6 +434,7 @@ export default function CheckoutPage() {
       /** Server builds priced snapshot — no order row until M-Pesa succeeds. */
       const checkoutPayload = {
         customerName: fullName.trim(),
+        customerPhone: fullPhone,
         customerEmail: "",
         deliveryAddress,
         city: "",
