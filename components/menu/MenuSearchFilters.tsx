@@ -17,6 +17,7 @@ const categoryEmojis: Record<string, string> = {
   beer: "🍺",
   wine: "🍷",
   "soft-drinks": "🥤",
+  water: "💧",
   "energy-drinks": "⚡",
 }
 

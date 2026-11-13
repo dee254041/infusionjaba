@@ -108,6 +108,7 @@ function ShopPageContent() {
             'wine': 'Wines',
             'cocktails': 'Liquor',
             'soft-drinks': 'Soft Drinks',
+            water: 'Soft Drinks',
             'jaba': 'Infused Jaba',
             'other': 'Liquor',
           }

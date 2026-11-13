@@ -148,6 +148,16 @@ export type DistributorIntel = {
   overdependenceWarning: string | null
 }
 
+export type DistributorRestockAlert = {
+  id: string
+  name: string
+  region: string
+  phone: string
+  daysSinceStock: number | null
+  lastStockedAt: string | null
+  label: string
+}
+
 export type JabaAiContext = {
   generatedAt: string
   sources: string[]
@@ -166,6 +176,8 @@ export type JabaAiContext = {
   comparisons: ComparisonBlock
   supplierIntel: SupplierIntel
   distributorIntel: DistributorIntel
+  /** Distributors with no delivery in about a month. */
+  distributorRestockAlerts: DistributorRestockAlert[]
   /** Compact strings for optional LLM / chat (no PII) */
   chatHints: {
     topLowStockMaterials: string[]

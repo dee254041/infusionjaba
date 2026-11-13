@@ -91,6 +91,23 @@ export function buildRuleBasedAnswer(question: string, ctx: JabaAiContext): AiAn
     )
   }
 
+  const quietDistributors = ctx.distributorRestockAlerts ?? []
+  if (
+    quietDistributors.length > 0 &&
+    q.includes('distributor') &&
+    (q.includes('stock') || q.includes('follow') || q.includes('month') || q.includes('quiet') || q.includes('restock'))
+  ) {
+    const names = quietDistributors.slice(0, 6).map((d) => `${d.name} (${d.label})`).join('; ')
+    issues.push(`${quietDistributors.length} distributors have not been stocked in about a month: ${names}`)
+    actions.push('Call these distributors or schedule a delivery before their shelves run dry')
+    pushQuickAction(
+      'quiet-distributors',
+      'Open Distributors',
+      '/jaba/distributors',
+      'Follow up with partners who have not received stock in 30 days'
+    )
+  }
+
   if (q.includes('distributor') && (q.includes('best') || q.includes('perform'))) {
     const top = ctx.charts.topDistributors[0]
     if (top) {

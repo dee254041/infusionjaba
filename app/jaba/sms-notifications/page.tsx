@@ -16,6 +16,8 @@ interface SmsEventSettings {
   packagingCreated: boolean
   distributionCreated: boolean
   distributionDelivered: boolean
+  rawMaterialMinStock: boolean
+  rawMaterialReorder: boolean
 }
 
 function normalizeKenyaNumber(value: string): string {
@@ -45,6 +47,8 @@ export default function SmsNotificationsPage() {
     packagingCreated: true,
     distributionCreated: true,
     distributionDelivered: false,
+    rawMaterialMinStock: true,
+    rawMaterialReorder: true,
   })
 
   useEffect(() => {
@@ -68,6 +72,8 @@ export default function SmsNotificationsPage() {
         packagingCreated: Boolean(data.events?.packagingCreated),
         distributionCreated: Boolean(data.events?.distributionCreated),
         distributionDelivered: Boolean(data.events?.distributionDelivered),
+        rawMaterialMinStock: data.events?.rawMaterialMinStock !== false,
+        rawMaterialReorder: data.events?.rawMaterialReorder !== false,
       })
     } catch (error) {
       console.error(error)
@@ -218,6 +224,8 @@ export default function SmsNotificationsPage() {
                 <ToggleRow title="Packaging session created" checked={events.packagingCreated} onChange={(v) => setEvent("packagingCreated", v)} />
                 <ToggleRow title="Products distributed (delivery note created)" checked={events.distributionCreated} onChange={(v) => setEvent("distributionCreated", v)} />
                 <ToggleRow title="Delivered only (status changed to Delivered)" checked={events.distributionDelivered} onChange={(v) => setEvent("distributionDelivered", v)} />
+                <ToggleRow title="Raw material at minimum stock" checked={events.rawMaterialMinStock} onChange={(v) => setEvent("rawMaterialMinStock", v)} />
+                <ToggleRow title="Raw material at reorder / restock level" checked={events.rawMaterialReorder} onChange={(v) => setEvent("rawMaterialReorder", v)} />
               </div>
             </div>
 

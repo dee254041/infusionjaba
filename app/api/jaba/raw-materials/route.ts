@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import clientPromise from '@/lib/mongodb'
 import { requireDeleteOtp } from '@/lib/jaba-delete-otp-guard'
+import { notifyJabaRawMaterialStockAlerts } from '@/lib/jaba-raw-material-stock-sms'
 
 export const runtime = 'nodejs'
 
@@ -290,6 +291,16 @@ export async function PUT(request: Request) {
     )
     
     console.log(`[Raw Materials API] ✅ Raw material updated successfully: ${mergedName}`)
+    await notifyJabaRawMaterialStockAlerts([
+      {
+        name: mergedName,
+        unit: mergedUnit,
+        beforeStock: Number(existing.currentStock) || 0,
+        afterStock: mergedCurrent,
+        minStock: mergedMin,
+        reorderLevel: mergedReorder,
+      },
+    ])
 
     return NextResponse.json(
       { 

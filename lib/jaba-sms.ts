@@ -12,6 +12,8 @@ export interface JabaSmsEventSettings {
   packagingCreated: boolean
   distributionCreated: boolean
   distributionDelivered: boolean
+  rawMaterialMinStock: boolean
+  rawMaterialReorder: boolean
 }
 
 export interface JabaSmsSettings {
@@ -30,6 +32,8 @@ export const DEFAULT_JABA_SMS_SETTINGS: JabaSmsSettings = {
     packagingCreated: true,
     distributionCreated: true,
     distributionDelivered: false,
+    rawMaterialMinStock: true,
+    rawMaterialReorder: true,
   },
   updatedAt: new Date(),
 }
@@ -56,6 +60,10 @@ export async function getJabaSmsSettings(): Promise<JabaSmsSettings> {
         ev.distributionCreated !== undefined ? Boolean(ev.distributionCreated) : defEv.distributionCreated,
       distributionDelivered:
         ev.distributionDelivered !== undefined ? Boolean(ev.distributionDelivered) : defEv.distributionDelivered,
+      rawMaterialMinStock:
+        ev.rawMaterialMinStock !== undefined ? Boolean(ev.rawMaterialMinStock) : defEv.rawMaterialMinStock,
+      rawMaterialReorder:
+        ev.rawMaterialReorder !== undefined ? Boolean(ev.rawMaterialReorder) : defEv.rawMaterialReorder,
     },
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(),
     updatedBy: doc.updatedBy ? String(doc.updatedBy) : undefined,
@@ -72,6 +80,8 @@ export async function saveJabaSmsSettings(settings: Partial<JabaSmsSettings> & {
       packagingCreated: settings.events?.packagingCreated ?? current.events.packagingCreated,
       distributionCreated: settings.events?.distributionCreated ?? current.events.distributionCreated,
       distributionDelivered: settings.events?.distributionDelivered ?? current.events.distributionDelivered,
+      rawMaterialMinStock: settings.events?.rawMaterialMinStock ?? current.events.rawMaterialMinStock,
+      rawMaterialReorder: settings.events?.rawMaterialReorder ?? current.events.rawMaterialReorder,
     },
     updatedAt: new Date(),
     updatedBy: settings.updatedBy,

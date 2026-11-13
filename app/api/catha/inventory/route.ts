@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import clientPromise from '@/lib/mongodb'
 import { auth } from '@/lib/auth-catha'
 import { normalizePermissions, hasCathaPermission } from '@/lib/catha-permissions-model'
+import { ensureCathaBottledWater } from '@/lib/catha-bottled-water'
 
 export const runtime = 'nodejs'
 
@@ -74,6 +75,7 @@ export async function GET(request: Request) {
     }
 
     await ensureVisibilityDefaults(db)
+    await ensureCathaBottledWater(db)
 
     if (category && category !== 'all') {
       query.category = category

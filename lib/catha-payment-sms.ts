@@ -1,13 +1,12 @@
 import type { Db } from 'mongodb'
 import { normalizePhoneNumbers, sendJabaSmsStrict } from '@/lib/jaba-sms'
 import { summarizeCathaOrderPayments } from '@/lib/catha-order-payments'
+import { getOrderReceiptUrl } from '@/lib/pay-url'
 
 const STUCK_SENDING_MS = 2 * 60_000
 
 function buildCathaPaymentReceiptMessage(orderId: string, forceUnique = false): string {
-  const receiptLink =
-    process.env.CATHA_RECEIPT_LINK_BASE?.trim() ||
-    `https://infusionjaba.co.ke/r/${encodeURIComponent(orderId)}`
+  const receiptLink = getOrderReceiptUrl(orderId, process.env.CATHA_RECEIPT_LINK_BASE)
   const base = `Payment received. Your order at Catha Lounge is confirmed.\nReceipt: ${receiptLink}\n\nThank you for visiting us.`
   // Manual resends need a unique body so providers/gateways don't silently drop duplicates.
   if (forceUnique) {

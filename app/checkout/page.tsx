@@ -21,6 +21,7 @@ import {
   isPinAccurateEnough,
   MAX_PIN_ACCURACY_METERS,
 } from "@/lib/order-delivery-location"
+import { isWithinNairobi, nairobiDeliveryBlockReason } from "@/lib/ecommerce-nairobi-delivery"
 import { toast } from "sonner"
 import { calculateCartTotals } from "@/lib/ecommerce/pricing"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
@@ -318,7 +319,11 @@ export default function CheckoutPage() {
       clearTimeout(timer)
       setGeoLoading(false)
       setGeoLiveAccuracy(null)
-      if (best && isPinAccurateEnough(best.accuracy)) {
+      if (best && isPinAccurateEnough(best.accuracy) && !isWithinNairobi(best.lat, best.lng)) {
+        setGeoPin(null)
+        setGeoError("That location is outside Nairobi. Online delivery is only available within Nairobi.")
+        toast.error("Online delivery is only available within Nairobi.")
+      } else if (best && isPinAccurateEnough(best.accuracy)) {
         setGeoPin(best)
         toast.success(`Location pinned (±${Math.round(best.accuracy as number)}m)`)
       } else {
@@ -379,6 +384,16 @@ export default function CheckoutPage() {
     if (!isPhoneValid) { toast.error("Please enter a valid 9-digit number after +254"); phoneRef.current?.focus(); return }
     if (!selectedDelivery) { toast.error("Please select a delivery option"); return }
     if (showLocationInput) {
+      const outsideNairobi = nairobiDeliveryBlockReason({
+        deliveryOption: selectedDelivery,
+        address: locationNote,
+        lat: geoPin?.lat,
+        lng: geoPin?.lng,
+      })
+      if (outsideNairobi) {
+        toast.error(outsideNairobi)
+        return
+      }
       // Either an accurate (≤ 30 m) GPS pin, or the apartment / building name.
       const hasAccuratePin = Boolean(geoPin) && isPinAccurateEnough(geoPin?.accuracy)
       if (!hasAccuratePin && locationNote.trim().length < 3) {
@@ -668,6 +683,9 @@ export default function CheckoutPage() {
                   </div>
                   <h2 className="text-lg font-black text-[#2a201b]">Delivery Option</h2>
                 </div>
+                <p className="mb-4 rounded-xl border border-[#dcc9ad] bg-[#f8f3ea] px-3 py-2 text-xs text-[#6f5d4f]">
+                  Online delivery is available within Nairobi only. Pickup at Catha Lounge is also available.
+                </p>
                 <div className="space-y-3">
                   {deliveryOptions.map(opt => (
                     <button

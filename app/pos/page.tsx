@@ -54,6 +54,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   wine: <Grape className="h-5 w-5" />,
   cocktails: <Sparkles className="h-5 w-5" />,
   "soft-drinks": <Coffee className="h-5 w-5" />,
+  water: <GlassWater className="h-5 w-5" />,
   jaba: <Leaf className="h-5 w-5" />,
 }
 
@@ -67,6 +68,7 @@ const categoryIconColors: Record<string, string> = {
   wine: "bg-rose-500/15 text-rose-700",
   cocktails: "bg-pink-500/15 text-pink-700",
   "soft-drinks": "bg-lime-500/15 text-lime-700",
+  water: "bg-sky-500/15 text-sky-700",
   jaba: "bg-green-500/15 text-green-700",
 }
 

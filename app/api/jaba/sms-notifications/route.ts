@@ -32,6 +32,8 @@ export async function PUT(request: NextRequest) {
         packagingCreated: Boolean(body.events?.packagingCreated),
         distributionCreated: Boolean(body.events?.distributionCreated),
         distributionDelivered: Boolean(body.events?.distributionDelivered),
+        rawMaterialMinStock: Boolean(body.events?.rawMaterialMinStock),
+        rawMaterialReorder: Boolean(body.events?.rawMaterialReorder),
       },
       updatedBy: authz.email || undefined,
     })

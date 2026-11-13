@@ -18,6 +18,7 @@ import {
 import { allocateFlavourLinesToParent } from '@/lib/jaba-allocate-flavour-lines'
 import { validateCompletedBatchFlavourLines } from '@/lib/jaba-batch-creation-validation'
 import { sendJabaSmsForEvent } from '@/lib/jaba-sms'
+import { notifyJabaRawMaterialStockAlerts, type RawMaterialStockChange } from '@/lib/jaba-raw-material-stock-sms'
 import {
   JABA_DUPLICATE_BATCH_NUMBER_MESSAGE,
   isMongoDuplicateKeyError,
@@ -512,6 +513,7 @@ export async function POST(request: Request) {
 
     const inventoryMovements: any[] = []
     const stockRefunds: { materialId: string; quantity: number }[] = []
+    const stockChangesForSms: RawMaterialStockChange[] = []
 
     try {
       if (ingredientsForBatch.length > 0) {
@@ -557,6 +559,14 @@ export async function POST(request: Request) {
             stockRefunds.push({
               materialId: material._id.toString(),
               quantity,
+            })
+            stockChangesForSms.push({
+              name: String(material.name || materialName),
+              unit: String(material.unit || ''),
+              beforeStock: Number(beforeStock) || 0,
+              afterStock: Number(afterStock) || 0,
+              minStock: Number(material.minStock) || 0,
+              reorderLevel: Number(material.reorderLevel) || 0,
             })
 
             inventoryMovements.push({
@@ -637,6 +647,7 @@ export async function POST(request: Request) {
       'batchCreated',
       `Jaba: Batch created. Batch ${normalizedBatchNumber}, litres ${vol.toFixed(2)}, supervisor ${supervisor}.`
     )
+    await notifyJabaRawMaterialStockAlerts(stockChangesForSms)
 
     return NextResponse.json(
       {

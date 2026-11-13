@@ -101,6 +101,78 @@ function KpiCard({
   )
 }
 
+function DistributorRestockPanel({
+  alerts,
+  onOpenList,
+}: {
+  alerts: JabaAiContext['distributorRestockAlerts']
+  onOpenList: () => void
+}) {
+  const shown = alerts.slice(0, 8)
+  const extra = alerts.length - shown.length
+  return (
+    <Card className="border-amber-200/90 bg-amber-50/70 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg text-amber-950 dark:text-amber-100">
+              <Users className="h-5 w-5" />
+              Distributors to restock
+              <Badge variant="outline" className="border-amber-300 bg-white text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                {alerts.length}
+              </Badge>
+            </CardTitle>
+            <CardDescription className="mt-1 text-amber-900/80 dark:text-amber-100/80">
+              No delivery in the last 30 days. These partners may be out of stock.
+            </CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" onClick={onOpenList}>
+            Open distributor list
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {alerts.length === 0 ? (
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            Every distributor has been stocked in the last 30 days.
+          </p>
+        ) : (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {shown.map((alert) => (
+              <li
+                key={alert.id}
+                className="rounded-xl border border-amber-200/80 bg-white px-3 py-3 dark:border-amber-900/40 dark:bg-slate-950/40"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-semibold text-slate-900 dark:text-white">{alert.name}</p>
+                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+                    {alert.label}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                  {alert.region || 'No region'}
+                  {alert.phone ? (
+                    <>
+                      {' · '}
+                      <a href={`tel:${alert.phone}`} className="font-medium text-emerald-800 underline-offset-2 hover:underline dark:text-emerald-300">
+                        {alert.phone}
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {extra > 0 && (
+          <p className="mt-3 text-xs font-medium text-amber-900 dark:text-amber-100">+{extra} more on the distributor list</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function AlertCard({
   title,
   detail,
@@ -167,6 +239,7 @@ const SUGGESTED_QUESTIONS = [
   'Which products should I increase?',
   'Which stock is slow-moving?',
   'Which distributor performs best?',
+  'Which distributors have not stocked this month?',
   'What is hurting profit most right now?',
   'How is payment collection performing this month?',
   'Which outstanding payments need urgent follow-up?',
@@ -395,6 +468,11 @@ export function JabaAiIntelligenceView({
           Refresh data
         </Button>
       </div>
+
+      <DistributorRestockPanel
+        alerts={data.distributorRestockAlerts ?? []}
+        onOpenList={() => router.push('/jaba/distributors')}
+      />
 
       {data.sourceErrors.length > 0 && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">

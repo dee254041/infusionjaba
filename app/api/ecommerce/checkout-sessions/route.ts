@@ -24,6 +24,7 @@ import {
   type EcommerceOpeningHoursSettings,
 } from '@/lib/ecommerce-opening-hours'
 import { trackAnalyticsEvent } from '@/lib/commerce-analytics'
+import { nairobiDeliveryBlockReason } from '@/lib/ecommerce-nairobi-delivery'
 
 async function resolveDeliveryFeeKes(
   db: Awaited<ReturnType<typeof getDatabase>>,
@@ -91,6 +92,20 @@ export async function POST(request: Request) {
     }
 
     const body = parsed.data
+    const nairobiBlock = nairobiDeliveryBlockReason({
+      deliveryOption: body.deliveryOption,
+      address: body.deliveryAddress,
+      notes: body.deliveryNotes,
+      lat: body.deliveryLocation?.lat,
+      lng: body.deliveryLocation?.lng,
+    })
+    if (nairobiBlock) {
+      return NextResponse.json(
+        { success: false, error: nairobiBlock, code: 'OUTSIDE_NAIROBI' },
+        { status: 400 }
+      )
+    }
+
     const db = await getDatabase('infusion_jaba')
 
     const settingsDoc = await db.collection('catha_settings').findOne({})

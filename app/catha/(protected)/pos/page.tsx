@@ -45,6 +45,7 @@ import {
   Leaf,
   Sparkles,
   Coffee,
+  Droplets,
   Grape,
   CircleDot,
   ShoppingCart,
@@ -143,6 +144,8 @@ const getCategoryIcon = (categoryId: string) => {
     wine: Grape,
     cocktails: Sparkles,
     "soft-drinks": Coffee,
+    water: Droplets,
+    jaba: Leaf,
   }
   const IconComponent = iconMap[categoryId] || CircleDot
   return <IconComponent className="h-5 w-5" />
@@ -270,6 +273,8 @@ const categoryIconColors: Record<string, string> = {
   wine: "bg-rose-500/15 text-rose-700",
   cocktails: "bg-pink-500/15 text-pink-700",
   "soft-drinks": "bg-lime-500/15 text-lime-700",
+  water: "bg-sky-500/15 text-sky-700",
+  jaba: "bg-green-500/15 text-green-700",
 }
 
 export default function POSPage() {

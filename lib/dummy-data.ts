@@ -101,6 +101,7 @@ export const categories: Category[] = [
   { id: "wine", name: "Wine", icon: "🍷", color: "#722F37", productCount: 28 },
   { id: "cocktails", name: "Cocktails", icon: "🍸", color: "#FF6B6B", productCount: 35 },
   { id: "soft-drinks", name: "Soft Drinks", icon: "🥤", color: "#4ECDC4", productCount: 20 },
+  { id: "water", name: "Water", icon: "💧", color: "#38BDF8", productCount: 2 },
   { id: "jaba", name: "Jaba", icon: "🌿", color: "#7CB342", productCount: 8 },
 ]
 
@@ -600,6 +601,34 @@ export const products: Product[] = [
     barcode: "5000112547080",
     unit: "bottle",
     supplier: "Local Distributors",
+  },
+
+  // Bottled water (house-bottled for lounge resale)
+  {
+    id: "wt001",
+    name: "500ml Water",
+    category: "water",
+    price: 100,
+    cost: 25,
+    stock: 0,
+    minStock: 10,
+    image: "/placeholder.svg?height=80&width=80",
+    barcode: "CATHA-WATER-500ML",
+    unit: "bottle",
+    supplier: "Catha Lounge",
+  },
+  {
+    id: "wt002",
+    name: "1 Litre Water",
+    category: "water",
+    price: 200,
+    cost: 30,
+    stock: 0,
+    minStock: 10,
+    image: "/placeholder.svg?height=80&width=80",
+    barcode: "CATHA-WATER-1L",
+    unit: "bottle",
+    supplier: "Catha Lounge",
   },
 
   // Jaba Products (Infused/Special)

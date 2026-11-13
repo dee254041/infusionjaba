@@ -18,6 +18,7 @@ interface CategoryTabsProps {
 
 const shortLabelMap: Record<string, string> = {
   "soft-drinks": "Soft drinks",
+  water: "Water",
   "energy-drinks": "Energy",
   cocktails: "Cocktails",
   whiskey: "Whiskey",

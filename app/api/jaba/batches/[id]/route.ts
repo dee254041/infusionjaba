@@ -21,6 +21,7 @@ import {
   isMongoDuplicateKeyError,
   normalizeJabaBatchNumber,
 } from '@/lib/jaba-batch-number'
+import { notifyJabaRawMaterialStockAlerts, type RawMaterialStockChange } from '@/lib/jaba-raw-material-stock-sms'
 
 export const runtime = 'nodejs'
 
@@ -109,6 +110,7 @@ export async function PUT(
     const updateData: any = {
       updatedAt: new Date(),
     }
+    const stockChangesForSms: RawMaterialStockChange[] = []
 
     // Standard batch field updates (if provided)
     if (status !== undefined) {
@@ -278,6 +280,14 @@ export async function PUT(
             )
           }
           const afterStock = beforeStock - delta
+          stockChangesForSms.push({
+            name: String(material.name || ''),
+            unit: String(material.unit || ''),
+            beforeStock: Number(beforeStock) || 0,
+            afterStock: Number(afterStock) || 0,
+            minStock: Number(material.minStock) || 0,
+            reorderLevel: Number(material.reorderLevel) || 0,
+          })
           
           inventoryMovements.push({
             type: 'DEDUCTION',
@@ -362,6 +372,7 @@ export async function PUT(
     }
 
     console.log(`[Batches API] ✅ Batch updated successfully: ${id}`)
+    await notifyJabaRawMaterialStockAlerts(stockChangesForSms)
 
     // Fetch updated batch
     const updated = await db.collection('jaba_batches').findOne({ _id: new ObjectId(id) })

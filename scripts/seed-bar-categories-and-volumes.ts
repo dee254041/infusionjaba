@@ -17,6 +17,7 @@ const barCategories = [
   { id: 'wine', name: 'Wine', icon: '🍷', color: '#722F37' },
   { id: 'cocktails', name: 'Cocktails', icon: '🍸', color: '#FF6B6B' },
   { id: 'soft-drinks', name: 'Soft Drinks', icon: '🥤', color: '#4ECDC4' },
+  { id: 'water', name: 'Water', icon: '💧', color: '#38BDF8' },
   { id: 'jaba', name: 'Jaba', icon: '🌿', color: '#7CB342' },
 ]
 

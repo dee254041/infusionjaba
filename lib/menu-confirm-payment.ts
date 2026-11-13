@@ -1,5 +1,6 @@
 import type { Db } from "mongodb"
 import { normalizePhoneNumbers, sendJabaSmsStrict } from "@/lib/jaba-sms"
+import { getOrderReceiptUrl } from "@/lib/pay-url"
 
 export type MenuConfirmPaymentInput = {
   orderIds: string[]
@@ -21,20 +22,12 @@ export type MenuConfirmPaymentResult = {
   paidAt: number
 }
 
-function receiptBaseUrl(): string {
-  return (
-    process.env.CATHA_RECEIPT_LINK_BASE?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    "https://infusionjaba.co.ke"
-  ).replace(/\/$/, "")
-}
-
 function buildTabReceiptMessage(opts: {
   orderId: string
   total: number
   roundCount: number
 }): string {
-  const link = `${receiptBaseUrl()}/r/${encodeURIComponent(opts.orderId)}`
+  const link = getOrderReceiptUrl(opts.orderId, process.env.CATHA_RECEIPT_LINK_BASE)
   const rounds =
     opts.roundCount > 1 ? ` · ${opts.roundCount} rounds` : ""
   return `Payment received. Your tab at Catha Lounge is settled (KES ${Math.round(
@@ -254,11 +247,10 @@ export async function confirmMenuPayment(
     }
   }
 
-  const base = receiptBaseUrl()
   return {
     ok: true,
     primaryOrderId,
-    receiptUrl: `${base}/r/${encodeURIComponent(primaryOrderId)}`,
+    receiptUrl: getOrderReceiptUrl(primaryOrderId, process.env.CATHA_RECEIPT_LINK_BASE),
     sms,
     settledOrderIds: ordered.map((o) => String(o.orderId)),
     total: tabTotal,

@@ -15,6 +15,7 @@ const categoryLabels: Record<string, string> = {
   wine: 'Wine',
   cocktails: 'Cocktails',
   'soft-drinks': 'Soft Drinks',
+  water: 'Water',
   jaba: 'Jaba',
   other: 'Other',
 }

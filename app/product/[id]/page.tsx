@@ -49,6 +49,7 @@ const CATEGORY_MAP: Record<string, "Infused Jaba" | "Liquor" | "Spirits" | "Wine
   wine: "Wines",
   cocktails: "Liquor",
   "soft-drinks": "Soft Drinks",
+  water: "Soft Drinks",
   jaba: "Infused Jaba",
   other: "Liquor",
 }

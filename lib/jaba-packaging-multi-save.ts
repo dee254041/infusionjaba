@@ -13,6 +13,7 @@ import {
   getTotalContainerUnits,
   computePackagedLitresFromContainers,
 } from '@/lib/jaba-packaging-calculations'
+import type { RawMaterialStockChange } from '@/lib/jaba-raw-material-stock-sms'
 
 export class PackagingApiError extends Error {
   status: number
@@ -106,6 +107,7 @@ export async function executeMultiFlavourPackagingTransaction(params: {
   sessionGroupId: string
   totalLitresPacked: number
   remainingByFlavourLineId: Record<string, number>
+  stockChangesForSms: RawMaterialStockChange[]
 }> {
   const {
     client,
@@ -137,6 +139,7 @@ export async function executeMultiFlavourPackagingTransaction(params: {
   let sessionGroupIdOut = ''
   let totalLitresPacked = 0
   let remainingByFlavourLineId: Record<string, number> = {}
+  const stockChangesForSms: RawMaterialStockChange[] = []
 
   try {
     await mongoSession.withTransaction(async () => {
@@ -462,6 +465,14 @@ export async function executeMultiFlavourPackagingTransaction(params: {
       const pushPackagingMovement = (req: { doc: any; units: number }, materialType: 'bottles' | 'stickers') => {
         const qty = req.units
         const before = Number(req.doc.currentStock) || 0
+        stockChangesForSms.push({
+          name: String(req.doc.name || materialType),
+          unit: String(req.doc.unit || 'pcs'),
+          beforeStock: before,
+          afterStock: before - qty,
+          minStock: Number(req.doc.minStock) || 0,
+          reorderLevel: Number(req.doc.reorderLevel) || 0,
+        })
         packagingMovementDocs.push({
           type: 'DEDUCTION',
           reason: 'PACKAGING',
@@ -550,5 +561,6 @@ export async function executeMultiFlavourPackagingTransaction(params: {
     sessionGroupId: sessionGroupIdOut,
     totalLitresPacked,
     remainingByFlavourLineId,
+    stockChangesForSms,
   }
 }

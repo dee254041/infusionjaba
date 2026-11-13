@@ -12,6 +12,7 @@ import {
   normalizeFlavourLabel,
 } from '@/lib/jaba-packaging-materials'
 import { buildPackagingSmsBody, sendJabaSmsForEvent } from '@/lib/jaba-sms'
+import { notifyJabaRawMaterialStockAlerts, type RawMaterialStockChange } from '@/lib/jaba-raw-material-stock-sms'
 import { requireDeleteOtp } from '@/lib/jaba-delete-otp-guard'
 import {
   normalizeQty,
@@ -192,6 +193,7 @@ async function handleMultiFlavourPackagingPost(
       packagingSms = `PACKAGING COMPLETE\n\nBatch No: ${batchNumber.trim()}\n\nTotal session: ${litresStr}L`
     }
     await sendJabaSmsForEvent('packagingCreated', packagingSms)
+    await notifyJabaRawMaterialStockAlerts(result.stockChangesForSms)
 
     const responsePayload = {
       success: true,
@@ -440,6 +442,7 @@ export async function POST(request: Request) {
     const mongoSession = client.startSession()
     let createdPackagingId = ''
     let txRemainingLitres = Math.max(0, newRemaining ?? 0)
+    const stockChangesForSms: RawMaterialStockChange[] = []
 
     const resolvedFlavourName = normalizeFlavourLabel(
       flavourLineDoc?.flavourName ||
@@ -670,6 +673,14 @@ export async function POST(request: Request) {
         const pushPackagingMovement = (req: { doc: any; units: number }, materialType: 'bottles' | 'stickers') => {
           const qty = req.units
           const before = Number(req.doc.currentStock) || 0
+          stockChangesForSms.push({
+            name: String(req.doc.name || materialType),
+            unit: String(req.doc.unit || 'pcs'),
+            beforeStock: before,
+            afterStock: before - qty,
+            minStock: Number(req.doc.minStock) || 0,
+            reorderLevel: Number(req.doc.reorderLevel) || 0,
+          })
           packagingMovementDocs.push({
             type: 'DEDUCTION',
             reason: 'PACKAGING',
@@ -758,6 +769,7 @@ export async function POST(request: Request) {
       packagingSms = `PACKAGING COMPLETE\n\nBatch No: ${bch}\n\nTotal session: ${litresStr}L`
     }
     await sendJabaSmsForEvent('packagingCreated', packagingSms)
+    await notifyJabaRawMaterialStockAlerts(stockChangesForSms)
 
     const responsePayload = {
       success: true,
