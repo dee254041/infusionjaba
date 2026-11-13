@@ -235,6 +235,19 @@ export async function submitManualMpesaVerification(
   }
 
   await db.collection(MANUAL_MPESA_VERIFICATIONS).insertOne(doc)
+  await db.collection('orders').updateOne(
+    { id: orderId },
+    {
+      $set: {
+        manualPaymentAlert: 'pending',
+        manualPaymentAlertVerificationId: doc.id,
+        manualPaymentAlertCode: transactionCode,
+        manualPaymentAlertAmount: amount,
+        manualPaymentAlertReason: null,
+        manualPaymentAlertAt: now,
+      },
+    }
+  )
 
   return { ok: true, verification: docToApi(doc, order) }
 }
@@ -341,6 +354,20 @@ export async function approveManualMpesaVerification(
     }
   )
 
+  await db.collection('orders').updateOne(
+    { id: doc.orderId },
+    {
+      $unset: {
+        manualPaymentAlert: '',
+        manualPaymentAlertVerificationId: '',
+        manualPaymentAlertCode: '',
+        manualPaymentAlertAmount: '',
+        manualPaymentAlertReason: '',
+        manualPaymentAlertAt: '',
+      },
+    }
+  )
+
   const updated = await db
     .collection<ManualMpesaVerificationDoc>(MANUAL_MPESA_VERIFICATIONS)
     .findOne({ id: verificationId })
@@ -386,6 +413,19 @@ export async function rejectManualMpesaVerification(
       },
     }
   )
+  await db.collection('orders').updateOne(
+    { id: doc.orderId },
+    {
+      $set: {
+        manualPaymentAlert: 'rejected',
+        manualPaymentAlertVerificationId: verificationId,
+        manualPaymentAlertCode: doc.transactionCode,
+        manualPaymentAlertAmount: doc.amount,
+        manualPaymentAlertReason: reason,
+        manualPaymentAlertAt: now,
+      },
+    }
+  )
 
   const updated = await db
     .collection<ManualMpesaVerificationDoc>(MANUAL_MPESA_VERIFICATIONS)
@@ -393,4 +433,32 @@ export async function rejectManualMpesaVerification(
   const order = await db.collection('orders').findOne({ id: doc.orderId })
 
   return { ok: true, verification: docToApi(updated!, order) }
+}
+
+/** Clears the orders-list warning after a rejected manual payment has been dealt with. */
+export async function resolveRejectedManualPaymentAlert(
+  db: Db,
+  orderId: string
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const id = String(orderId || '').trim()
+  if (!id) return { ok: false, error: 'Order ID is required', status: 400 }
+  const order = await db.collection('orders').findOne({ id })
+  if (!order) return { ok: false, error: 'Order not found', status: 404 }
+  if (order.manualPaymentAlert !== 'rejected') {
+    return { ok: false, error: 'This order has no rejected manual payment to resolve.', status: 400 }
+  }
+  await db.collection('orders').updateOne(
+    { id },
+    {
+      $unset: {
+        manualPaymentAlert: '',
+        manualPaymentAlertVerificationId: '',
+        manualPaymentAlertCode: '',
+        manualPaymentAlertAmount: '',
+        manualPaymentAlertReason: '',
+        manualPaymentAlertAt: '',
+      },
+    }
+  )
+  return { ok: true }
 }

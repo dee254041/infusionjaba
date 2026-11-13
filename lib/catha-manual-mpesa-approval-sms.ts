@@ -3,24 +3,17 @@ import { sendJabaSmsStrict } from '@/lib/jaba-sms'
 import { createManualMpesaApprovalToken } from '@/lib/catha-manual-mpesa-approval-token'
 import type { ManualMpesaVerificationForApi } from '@/lib/catha-manual-mpesa-verification'
 import { getCathaNotificationSettings } from '@/lib/catha-notification-settings'
+import { normalizePhoneNumbers } from '@/lib/phone-normalize'
+import { buildManualPaymentAlertSms } from '@/lib/catha-manual-mpesa-approval-sms-message'
 
-function buildManualMpesaApprovalSmsMessage(
-  verification: ManualMpesaVerificationForApi,
-  approveUrl: string,
-  minsLeft: number
-): string {
-  const lines = [
-    'Manual M-Pesa approval needed',
-    `Code: ${verification.transactionCode}`,
-    `Order: ${verification.orderId}`,
-    `KES ${Number(verification.amount || 0).toFixed(2)}`,
-    `By: ${verification.enteredBy}`,
-  ]
-  if (verification.notes) {
-    lines.push(`Reason: ${verification.notes.slice(0, 80)}`)
-  }
-  lines.push(`Approve (expires ${minsLeft}m): ${approveUrl}`)
-  return lines.join('\n')
+async function adminAlertPhones(db: Db, extra: string[]): Promise<string[]> {
+  const admins = await db
+    .collection('catha_users')
+    .find({ role: 'SUPER_ADMIN', status: 'ACTIVE' })
+    .project({ phoneNumber: 1 })
+    .toArray()
+  const fromAccounts = admins.map((user) => String(user.phoneNumber || '').trim()).filter(Boolean)
+  return normalizePhoneNumbers([...extra, ...fromAccounts])
 }
 
 export async function maybeSendManualMpesaApprovalSms(
@@ -29,15 +22,10 @@ export async function maybeSendManualMpesaApprovalSms(
 ): Promise<{ sent: boolean; reason?: string; approveUrl?: string }> {
   try {
     const notifications = await getCathaNotificationSettings(db)
-
-    if (!notifications.manualMpesaApprovalSmsEnabled) {
-      console.log('[manual-mpesa-approval-sms] Skipped: toggle disabled')
-      return { sent: false, reason: 'disabled' }
-    }
-
-    const phones = notifications.manualMpesaApprovalPhones
+    const extra = notifications.manualMpesaApprovalSmsEnabled ? notifications.manualMpesaApprovalPhones : []
+    const phones = await adminAlertPhones(db, extra)
     if (!phones.length) {
-      console.warn('[manual-mpesa-approval-sms] Skipped: no approval numbers configured')
+      console.warn('[manual-mpesa-approval-sms] Skipped: no super admin phone and no approval numbers')
       return { sent: false, reason: 'no_recipients' }
     }
 
@@ -50,7 +38,7 @@ export async function maybeSendManualMpesaApprovalSms(
     )
 
     const minsLeft = Math.max(1, Math.round((expiresAt.getTime() - Date.now()) / 60000))
-    const message = buildManualMpesaApprovalSmsMessage(verification, approveUrl, minsLeft)
+    const message = buildManualPaymentAlertSms(verification, approveUrl, minsLeft)
 
     console.log('[manual-mpesa-approval-sms] Sending', {
       verificationId: verification.id,

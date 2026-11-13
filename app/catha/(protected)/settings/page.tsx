@@ -1887,9 +1887,9 @@ export default function SettingsPage() {
                   <Separator />
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label>Manual M-Pesa approval SMS</Label>
+                      <Label>Also text these managers</Label>
                       <p className="text-sm text-muted-foreground">
-                        Send managers a one-time approval link when staff submit a manual M-Pesa recovery entry.
+                        Every manual payment already texts active super admins who have a phone on their account. Turn this on to include extra manager numbers.
                       </p>
                     </div>
                     <Switch
@@ -1906,7 +1906,7 @@ export default function SettingsPage() {
                       placeholder="+254712345678, +254700000000"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Managers receive an SMS with a secure one-time link to approve or reject pending manual payments.
+                      These numbers get the same confirmation text, with a one-time link to approve or reject the payment.
                     </p>
                   </div>
                   <div className="space-y-2">

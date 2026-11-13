@@ -6,6 +6,7 @@ import {
   normalizePermissions,
 } from '@/lib/catha-permissions-model'
 import { approveManualMpesaVerification } from '@/lib/catha-manual-mpesa-verification'
+import { revokeOpenManualMpesaApprovalTokens } from '@/lib/catha-manual-mpesa-approval-token'
 import { requireActiveShiftForSessionUser } from '@/lib/catha-shift-service'
 import { queueCathaAuditLog } from '@/lib/catha-audit-log'
 import { getClientIp } from '@/lib/rate-limit-simple'
@@ -63,6 +64,8 @@ export async function POST(
         { status: result.status }
       )
     }
+
+    await revokeOpenManualMpesaApprovalTokens(db, verificationId, 'approve')
 
     const orderAfter = await db.collection('orders').findOne({ id: result.verification.orderId })
 

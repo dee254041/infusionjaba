@@ -36,7 +36,7 @@ import { UserChip } from "@/components/orders/user-chip"
 import { getStatusLabel } from "@/lib/order-utils"
 import { ReceiptModal, type ReceiptOrder } from "@/components/receipt"
 import { summarizeCathaOrderPayments } from "@/lib/catha-order-payments"
-import { canManageOrderMpesaPayments, canManuallyAddMpesaTransaction, normalizePermissions } from "@/lib/catha-permissions-model"
+import { canApproveManualMpesaVerifications, canManageOrderMpesaPayments, canManuallyAddMpesaTransaction, normalizePermissions } from "@/lib/catha-permissions-model"
 import type { OrdersDashboardSummary } from "@/lib/catha-orders-dashboard-summary"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -86,10 +86,16 @@ function menuAttentionRank(tx: Transaction): number {
   return 0
 }
 
+function manualPaymentAlertRank(tx: Transaction): number {
+  const alert = String((tx as { manualPaymentAlert?: string }).manualPaymentAlert || "")
+  if (alert === "rejected" || alert === "pending") return 3
+  return 0
+}
+
 function sortOrdersUnacceptedFirst(list: Transaction[]): Transaction[] {
   return list.slice().sort((a, b) => {
-    const aTop = menuAttentionRank(a)
-    const bTop = menuAttentionRank(b)
+    const aTop = Math.max(menuAttentionRank(a), manualPaymentAlertRank(a))
+    const bTop = Math.max(menuAttentionRank(b), manualPaymentAlertRank(b))
     if (aTop !== bTop) return bTop - aTop
     const at = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp as any).getTime()
     const bt = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp as any).getTime()
@@ -102,6 +108,81 @@ function formatTableLabel(table: unknown): string | null {
   const s = String(table).trim()
   if (!s || s === "—") return null
   return s.replace(/^table\s*/i, "")
+}
+
+function ManualPaymentAlertBar({
+  order,
+  canDecide,
+  busy,
+  onApprove,
+  onReject,
+  onResolve,
+}: {
+  order: Transaction
+  canDecide: boolean
+  busy: boolean
+  onApprove: () => void
+  onReject: () => void
+  onResolve: () => void
+}) {
+  const alert = String((order as { manualPaymentAlert?: string }).manualPaymentAlert || "")
+  if (alert !== "pending" && alert !== "rejected") return null
+  const rejected = alert === "rejected"
+  const code = String((order as { manualPaymentAlertCode?: string }).manualPaymentAlertCode || "")
+  const amount = Number((order as { manualPaymentAlertAmount?: number }).manualPaymentAlertAmount || 0)
+  const reason = String((order as { manualPaymentAlertReason?: string }).manualPaymentAlertReason || "")
+  return (
+    <div className={`flex flex-col gap-2 px-3 py-2.5 rounded-t-xl -mb-1 sm:flex-row sm:items-center sm:justify-between ${rejected ? "bg-rose-600" : "bg-amber-500"}`}>
+      <div className="flex items-start gap-2 min-w-0 text-white">
+        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide">
+            {rejected ? "Manual payment was not approved" : "Manual payment needs confirmation"}
+          </p>
+          <p className="text-[11px] text-white/90">
+            {code ? `Code ${code}` : "Manual M-Pesa"}
+            {Number.isFinite(amount) && amount > 0 ? ` · KES ${amount.toLocaleString("en-KE")}` : ""}
+            {rejected && reason ? ` · ${reason}` : ""}
+          </p>
+        </div>
+      </div>
+      {canDecide ? (
+        <div className="flex gap-2 shrink-0">
+          {rejected ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onResolve}
+              className="bg-white text-rose-700 text-xs font-bold px-3 py-1.5 rounded-full"
+            >
+              Resolve
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onApprove}
+                className="bg-white text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onReject}
+                className="bg-white/15 text-white text-xs font-bold px-3 py-1.5 rounded-full ring-1 ring-white/40"
+              >
+                Not approved
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px] font-medium text-white/90 shrink-0">Waiting for an admin</p>
+      )}
+    </div>
+  )
 }
 
 function linkedMpesaPaymentTitle(p: { linkSource?: string | null }) {
@@ -357,6 +438,14 @@ export default function OrdersPage() {
       ),
     [session?.user]
   )
+  const canApproveManualPayment = useMemo(
+    () =>
+      canApproveManualMpesaVerifications(
+        normalizePermissions((session?.user as { permissions?: unknown })?.permissions),
+        (session?.user as { role?: string })?.role
+      ),
+    [session?.user]
+  )
   const canManualMpesa = useMemo(
     () =>
       canManuallyAddMpesaTransaction(
@@ -424,6 +513,7 @@ export default function OrdersPage() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false)
   const [changeNotesDraft, setChangeNotesDraft] = useState("")
   const [markingChangeGiven, setMarkingChangeGiven] = useState(false)
+  const [manualAlertBusyId, setManualAlertBusyId] = useState<string | null>(null)
   const [unlinkingTxId, setUnlinkingTxId] = useState<string | null>(null)
   const [ordersPage, setOrdersPage] = useState(1)
   const [totalMatching, setTotalMatching] = useState(0)
@@ -1745,6 +1835,55 @@ export default function OrdersPage() {
     }
   }
 
+  const decideManualPayment = async (order: Transaction, action: "approve" | "reject") => {
+    const verificationId = String((order as { manualPaymentAlertVerificationId?: string }).manualPaymentAlertVerificationId || "")
+    if (!verificationId) {
+      toast.error("This alert has no payment to confirm.")
+      return
+    }
+    let reason: string | undefined
+    if (action === "reject") {
+      const typed = window.prompt("Why is this manual payment not approved?")
+      if (typed === null) return
+      reason = typed.trim()
+    }
+    setManualAlertBusyId(order.id)
+    try {
+      const res = await fetch(`/api/catha/orders/manual-mpesa/${encodeURIComponent(verificationId)}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action === "reject" ? { reason } : {}),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || "Could not update the manual payment")
+      toast.success(action === "approve" ? "Manual payment approved" : "Marked not approved. Resolve it when this is handled.")
+      await fetchOrders()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Could not update the manual payment")
+    } finally {
+      setManualAlertBusyId(null)
+    }
+  }
+
+  const resolveManualPaymentAlert = async (orderId: string) => {
+    setManualAlertBusyId(orderId)
+    try {
+      const res = await fetch("/api/catha/orders/manual-payment-alert/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || "Could not resolve this order")
+      toast.success("Resolved. The order is back in its normal place.")
+      await fetchOrders()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Could not resolve this order")
+    } finally {
+      setManualAlertBusyId(null)
+    }
+  }
+
   const handleUnlinkMpesaFromOrder = async (orderId: string, transactionId: string) => {
     if (!confirm("Remove this M-Pesa link from the order? Totals will be recalculated.")) return
     setUnlinkingTxId(transactionId)
@@ -2039,6 +2178,14 @@ export default function OrdersPage() {
                   !servedAt
                 return (
                   <div key={tx.id} className="relative">
+                    <ManualPaymentAlertBar
+                      order={tx}
+                      canDecide={canApproveManualPayment}
+                      busy={manualAlertBusyId === tx.id}
+                      onApprove={() => void decideManualPayment(tx, "approve")}
+                      onReject={() => void decideManualPayment(tx, "reject")}
+                      onResolve={() => void resolveManualPaymentAlert(tx.id)}
+                    />
                     {isPendingMenuOrder && (
                       <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-t-xl bg-gradient-to-r from-orange-500 to-amber-500 -mb-1">
                         <div className="flex items-center gap-2 min-w-0">
@@ -3019,6 +3166,14 @@ export default function OrdersPage() {
                       !servedAt
                     return (
                       <div key={tx.id} className="relative">
+                        <ManualPaymentAlertBar
+                          order={tx}
+                          canDecide={canApproveManualPayment}
+                          busy={manualAlertBusyId === tx.id}
+                          onApprove={() => void decideManualPayment(tx, "approve")}
+                          onReject={() => void decideManualPayment(tx, "reject")}
+                          onResolve={() => void resolveManualPaymentAlert(tx.id)}
+                        />
                         {isPendingMenuOrder && (
                           <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-t-xl bg-gradient-to-r from-orange-500 to-amber-500 -mb-1 z-10 relative">
                             <div className="flex items-center gap-2 min-w-0">

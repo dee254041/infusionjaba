@@ -200,11 +200,11 @@ function DistributorDirectoryPanel({
                       return (
                         <li
                           key={row.id}
-                          className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900"
+                          className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-900"
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-slate-900 dark:text-white">{row.name}</p>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
                               {row.phone ? (
                                 <a
                                   href={`tel:${row.phone}`}
@@ -218,26 +218,26 @@ function DistributorDirectoryPanel({
                               )}
                               {row.region && row.county ? <span>· {row.region}</span> : null}
                             </p>
-                            <p className={cn('mt-1 text-xs font-semibold sm:hidden', quiet ? 'text-slate-500' : 'text-emerald-800 dark:text-emerald-200')}>
-                              {quiet ? 'Never ordered' : when}
-                            </p>
                           </div>
-                          <span
+                          <div
                             className={cn(
-                              'hidden max-w-[11rem] shrink-0 rounded-full px-2.5 py-1 text-right text-[11px] font-semibold leading-snug sm:inline',
+                              'flex items-center justify-between gap-3 rounded-lg px-3 py-2 sm:min-w-[11.5rem] sm:flex-col sm:items-end sm:justify-center sm:text-right',
                               quiet
-                                ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                                : 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100'
+                                ? 'bg-slate-50 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300'
+                                : 'bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-50'
                             )}
                           >
-                            {quiet ? 'Never ordered' : when}
-                          </span>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              Last order
+                            </p>
+                            <p className="text-sm font-semibold leading-tight">{quiet ? 'Never ordered' : when}</p>
+                          </div>
                           <Button
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="h-9 w-9 shrink-0 rounded-full"
-                            aria-label={`Order history for ${row.name}`}
+                            className="h-9 w-9 shrink-0 self-end rounded-full sm:self-center"
+                            aria-label={`Last order and history for ${row.name}`}
                             onClick={() => setSelected(row)}
                           >
                             <Info className="h-4 w-4" />

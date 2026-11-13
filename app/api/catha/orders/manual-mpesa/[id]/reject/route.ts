@@ -6,6 +6,7 @@ import {
   normalizePermissions,
 } from '@/lib/catha-permissions-model'
 import { rejectManualMpesaVerification } from '@/lib/catha-manual-mpesa-verification'
+import { revokeOpenManualMpesaApprovalTokens } from '@/lib/catha-manual-mpesa-approval-token'
 import { queueCathaAuditLog } from '@/lib/catha-audit-log'
 import { getClientIp } from '@/lib/rate-limit-simple'
 
@@ -51,6 +52,8 @@ export async function POST(
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status })
     }
+
+    await revokeOpenManualMpesaApprovalTokens(db, verificationId, 'reject')
 
     queueCathaAuditLog({
       type: 'FINANCIAL',

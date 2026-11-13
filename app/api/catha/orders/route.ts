@@ -249,7 +249,14 @@ export async function GET(request: Request) {
             },
           },
         },
-        { $sort: { _menuAttention: -1, timestamp: -1 } },
+        {
+          $addFields: {
+            _manualAlert: {
+              $cond: [{ $in: ['$manualPaymentAlert', ['pending', 'rejected']] }, 1, 0],
+            },
+          },
+        },
+        { $sort: { _manualAlert: -1, _menuAttention: -1, timestamp: -1 } },
         { $skip: skip },
         { $limit: limit },
         {
@@ -259,6 +266,7 @@ export async function GET(request: Request) {
             _waiterBlank: 0,
             _notServed: 0,
             _menuAttention: 0,
+            _manualAlert: 0,
           },
         },
       ]

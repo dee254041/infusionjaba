@@ -34,7 +34,19 @@ async function ensureIndexes(db: Db): Promise<void> {
 }
 
 export function buildManualMpesaApprovalUrl(token: string): string {
-  return `${getJabaPublicBaseUrl()}/approve-mpesa/${encodeURIComponent(token)}`
+  return `${getJabaPublicBaseUrl()}/catha/approve-mpesa/${encodeURIComponent(token)}`
+}
+
+/** Kill every unused link for this payment. A used link cannot approve or reject again. */
+export async function revokeOpenManualMpesaApprovalTokens(
+  db: Db,
+  verificationId: string,
+  action: 'approve' | 'reject'
+): Promise<void> {
+  await db.collection(MANUAL_MPESA_APPROVAL_TOKENS).updateMany(
+    { verificationId, usedAt: null },
+    { $set: { usedAt: new Date(), usedAction: action } }
+  )
 }
 
 export async function createManualMpesaApprovalToken(
@@ -115,7 +127,8 @@ export async function consumeManualMpesaApprovalToken(
   db: Db,
   token: string,
   action: 'approve' | 'reject',
-  rejectionReason?: string | null
+  rejectionReason?: string | null,
+  reviewer?: { name: string; userId?: string | null }
 ): Promise<ConsumeApprovalTokenResult> {
   await ensureIndexes(db)
   const raw = String(token || '').trim()
@@ -152,8 +165,8 @@ export async function consumeManualMpesaApprovalToken(
     const result = await approveManualMpesaVerification(
       db,
       verificationId,
-      'SMS approval link',
-      null
+      reviewer?.name || 'Admin',
+      reviewer?.userId ?? null
     )
     if (!result.ok) {
       await db.collection(MANUAL_MPESA_APPROVAL_TOKENS).updateOne(
@@ -162,6 +175,7 @@ export async function consumeManualMpesaApprovalToken(
       )
       return { ok: false, error: result.error, status: result.status }
     }
+    await revokeOpenManualMpesaApprovalTokens(db, verificationId, 'approve')
     return {
       ok: true,
       action: 'approve',
@@ -173,9 +187,9 @@ export async function consumeManualMpesaApprovalToken(
   const rejectResult = await rejectManualMpesaVerification(
     db,
     verificationId,
-    'SMS approval link',
-    rejectionReason ?? 'Rejected via SMS link',
-    null
+    reviewer?.name || 'Admin',
+    rejectionReason ?? 'Rejected from the approval link',
+    reviewer?.userId ?? null
   )
   if (!rejectResult.ok) {
     await db.collection(MANUAL_MPESA_APPROVAL_TOKENS).updateOne(
@@ -185,6 +199,7 @@ export async function consumeManualMpesaApprovalToken(
     return { ok: false, error: rejectResult.error, status: rejectResult.status }
   }
 
+  await revokeOpenManualMpesaApprovalTokens(db, verificationId, 'reject')
   return {
     ok: true,
     action: 'reject',
