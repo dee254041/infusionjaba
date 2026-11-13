@@ -3,6 +3,7 @@ import { filterInventoryStockLineItems } from '@/lib/catha-order-inventory-lines
 import { ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION } from '@/lib/ecommerce-checkout-session-constants'
 import { logEcommerceRecoveryCritical } from '@/lib/ecommerce-stock-reservation'
 import { maybeSendOnlineOrderSms } from '@/lib/catha-online-order-sms'
+import { trackAnalyticsEvent } from '@/lib/commerce-analytics'
 import { buildGoogleMapsUrl, parseDeliveryLocation } from '@/lib/order-delivery-location'
 import { normalizeKenyaPhone } from '@/lib/phone-utils'
 
@@ -17,6 +18,7 @@ export type EcommerceCheckoutSessionSnapshot = {
   deliveryLocation?: { lat: number; lng: number; accuracy?: number | null } | null
   /** Dialable number typed at checkout. Google sign-in ids are not a phone. */
   contactPhone?: string | null
+  analyticsSessionId?: string | null
   items: unknown[]
   subtotal: number
   vat: number
@@ -240,6 +242,30 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
       },
     }
   )
+
+  const itemNames = (Array.isArray(snap.items) ? snap.items : [])
+    .map((item) => {
+      if (!item || typeof item !== 'object') return ''
+      const row = item as { name?: string; productName?: string; quantity?: number }
+      const label = String(row.productName || row.name || '').trim()
+      return label ? `${label} x${Number(row.quantity) || 1}` : ''
+    })
+    .filter(Boolean)
+    .slice(0, 12)
+  await trackAnalyticsEvent(db, null, {
+    eventType: 'purchase',
+    sessionId: snap.analyticsSessionId || `order:${orderId}`,
+    path: '/checkout',
+    pageName: 'Checkout',
+    value: Number(snap.total) || 0,
+    orderId,
+    quantity: Array.isArray(snap.items)
+      ? snap.items.reduce((sum, item) => sum + (Number((item as { quantity?: number })?.quantity) || 0), 0)
+      : null,
+    metadata: { items: itemNames },
+  }).catch((error) => {
+    console.error('[ecommerce-checkout] analytics purchase failed', error)
+  })
 
   await maybeSendOnlineOrderSms(db, {
     id: orderId,

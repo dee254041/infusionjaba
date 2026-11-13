@@ -5,6 +5,7 @@ import debounce from "lodash.debounce"
 import { useShopSession } from "@/components/providers/shop-session-provider"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
 import { toast } from "sonner"
+import { getAnalyticsSessionId } from "@/lib/commerce-analytics-client"
 
 const fetchOpts: RequestInit = { credentials: "include", cache: "no-store" }
 
@@ -152,7 +153,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/ecommerce/cart/items", {
           ...fetchOpts,
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-analytics-session": getAnalyticsSessionId() },
           body: JSON.stringify({ item: toAdd }),
         })
         if (res.status === 401) {
@@ -236,7 +237,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const url = `/api/ecommerce/cart/items?uniqueId=${encodeURIComponent(lineId)}`
-        const res = await fetch(url, { ...fetchOpts, method: "DELETE" })
+        const res = await fetch(url, {
+          ...fetchOpts,
+          method: "DELETE",
+          headers: { "x-analytics-session": getAnalyticsSessionId() },
+        })
 
         if (process.env.NODE_ENV === "development") {
           console.log("[removeItem] server received uniqueId:", lineId, "res.ok:", res.ok)

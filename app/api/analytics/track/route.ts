@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getDatabase } from '@/lib/mongodb'
-import { analyticsDbName, trackAnalyticsEvent, type AnalyticsEventType } from '@/lib/commerce-analytics'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit-simple'
+import { analyticsDbName, isStorefrontAnalyticsPath, trackAnalyticsEvent, type AnalyticsEventType } from '@/lib/commerce-analytics'
 
 const EVENT_TYPES: AnalyticsEventType[] = [
   'page_view',
@@ -11,14 +12,25 @@ const EVENT_TYPES: AnalyticsEventType[] = [
   'purchase',
   'search',
   'wishlist_add',
+  'scroll',
+  'engagement',
+  'page_exit',
+  'click',
 ]
 
 export async function POST(request: Request) {
   try {
+    const limited = checkRateLimit(`analytics:${getClientIp(request)}`, 600, 60_000)
+    if (!limited.ok) return NextResponse.json({ ok: true, skipped: 'rate_limit' })
+
     const body = await request.json().catch(() => null)
     const eventType = body?.eventType
     if (!EVENT_TYPES.includes(eventType)) {
       return NextResponse.json({ ok: false, error: 'Invalid event type' }, { status: 400 })
+    }
+    const path = typeof body?.path === 'string' ? body.path : '/'
+    if (!isStorefrontAnalyticsPath(path.startsWith('/') ? path : `/${path}`)) {
+      return NextResponse.json({ ok: true, skipped: 'not_storefront' })
     }
 
     const db = await getDatabase(analyticsDbName())

@@ -188,6 +188,7 @@ export async function POST(request: Request) {
       deliveryNotes: (body.deliveryNotes ?? '').trim(),
       deliveryOption: body.deliveryOption?.trim() || null,
       contactPhone: normalizeKenyaPhone(body.customerPhone),
+      analyticsSessionId: typeof body.analyticsSessionId === 'string' ? body.analyticsSessionId.slice(0, 80) : null,
       deliveryLocation: body.deliveryLocation
         ? {
             lat: body.deliveryLocation.lat,
@@ -271,7 +272,7 @@ export async function POST(request: Request) {
 
     await trackAnalyticsEvent(db, request, {
       eventType: 'begin_checkout',
-      sessionId: session.userId,
+      sessionId: body.analyticsSessionId || session.userId,
       path: '/checkout',
       pageName: 'Checkout',
       quantity: priced.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),

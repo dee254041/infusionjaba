@@ -23,6 +23,7 @@ import {
 } from "@/lib/order-delivery-location"
 import { isWithinNairobi, nairobiDeliveryBlockReason } from "@/lib/ecommerce-nairobi-delivery"
 import { toast } from "sonner"
+import { getAnalyticsSessionId } from "@/lib/commerce-analytics-client"
 import { calculateCartTotals } from "@/lib/ecommerce/pricing"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
 import { normalizeMpesaStatus } from "@/lib/mpesa-status"
@@ -435,6 +436,7 @@ export default function CheckoutPage() {
       const checkoutPayload = {
         customerName: fullName.trim(),
         customerPhone: fullPhone,
+        analyticsSessionId: getAnalyticsSessionId(),
         customerEmail: "",
         deliveryAddress,
         city: "",

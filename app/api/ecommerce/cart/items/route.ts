@@ -11,7 +11,7 @@ import {
 } from '@/lib/order-request-schemas'
 import { normalizeCartAddBody } from '@/lib/shop-cart-normalize'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit-simple'
-import { trackAnalyticsEvent } from '@/lib/commerce-analytics'
+import { cleanAnalyticsSessionId, trackAnalyticsEvent } from '@/lib/commerce-analytics'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     for (const item of resolved.items) {
       await trackAnalyticsEvent(db, request, {
         eventType: 'add_to_cart',
-        sessionId: customerId.toString(),
+        sessionId: cleanAnalyticsSessionId(request.headers.get('x-analytics-session')) || customerId.toString(),
         path: '/cart',
         pageName: 'Cart',
         productId: item.id,
@@ -185,7 +185,7 @@ export async function DELETE(request: Request) {
     const updated = await upsertCart(customerId, items)
     await trackAnalyticsEvent(db, request, {
       eventType: 'remove_from_cart',
-      sessionId: customerId.toString(),
+      sessionId: cleanAnalyticsSessionId(request.headers.get('x-analytics-session')) || customerId.toString(),
       path: '/cart',
       pageName: 'Cart',
       quantity: toRemove.size,

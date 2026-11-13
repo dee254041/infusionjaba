@@ -26,17 +26,23 @@ export async function trackClientEvent(
   payload: Record<string, unknown> = {}
 ) {
   if (typeof window === 'undefined') return
-  const body = {
+  const path = typeof payload.path === 'string' ? payload.path : window.location.pathname || '/'
+  const body = JSON.stringify({
     eventType,
     sessionId: getAnalyticsSessionId(),
-    path: window.location.pathname || '/',
+    path,
     ...payload,
-  }
+    path,
+  })
   try {
+    if (eventType === 'page_exit' && navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' })
+      if (navigator.sendBeacon('/api/analytics/track', blob)) return
+    }
     await fetch('/api/analytics/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body,
       keepalive: true,
     })
   } catch {

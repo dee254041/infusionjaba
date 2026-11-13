@@ -42,6 +42,7 @@ export function normalizeEcommerceOrderCreateBody(body: unknown): unknown {
   if (typeof b.id === 'string') out.id = b.id
   if (typeof b.customerName === 'string') out.customerName = b.customerName
   if (typeof b.customerPhone === 'string') out.customerPhone = b.customerPhone
+  if (typeof b.analyticsSessionId === 'string') out.analyticsSessionId = b.analyticsSessionId.slice(0, 80)
   if (typeof b.customerEmail === 'string') out.customerEmail = b.customerEmail
   if (typeof b.deliveryAddress === 'string') out.deliveryAddress = b.deliveryAddress
   if (typeof b.city === 'string') out.city = b.city

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, Suspense, useEffect, useCallback } from "react"
+import { useState, useMemo, Suspense, useEffect, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { EcommerceHeader } from "@/components/ecommerce/header"
 import { ProductCard } from "@/components/ecommerce/product-card"
@@ -301,13 +301,6 @@ function ShopPageContent() {
     const ok = await addItem({ id: product.id, name: product.name, price, image: product.image, quantity: 1, size })
     if (ok) {
       toast.success(`${product.name}${size ? ` (${size})` : ''} added to cart`, { duration: 4000 })
-      trackClientEvent('add_to_cart', {
-        productId: product.id,
-        productName: product.name,
-        category: product.category,
-        quantity: 1,
-        value: price,
-      })
     } else {
       toast.error(`Could not add ${product.name}. Try again.`)
     }
@@ -350,12 +343,16 @@ function ShopPageContent() {
       .slice(0, 5) // Limit to 5 suggestions
   }, [searchQuery, products])
 
+  const lastTrackedSearch = useRef('')
   useEffect(() => {
-    if (!debouncedSearchQuery.trim() || debouncedSearchQuery.trim().length < 2) return
+    const query = debouncedSearchQuery.trim()
+    if (query.length < 2 || query === lastTrackedSearch.current) return
+    const resultCount = filteredProducts.length
     const timer = window.setTimeout(() => {
+      lastTrackedSearch.current = query
       trackClientEvent('search', {
-        searchQuery: debouncedSearchQuery.trim(),
-        metadata: { resultCount: filteredProducts.length, source: 'shop-page' },
+        searchQuery: query,
+        metadata: { resultCount },
       })
     }, 250)
     return () => window.clearTimeout(timer)

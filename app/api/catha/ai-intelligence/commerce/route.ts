@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { getDatabase } from '@/lib/mongodb'
 import { requireSuperAdminApi } from '@/lib/catha-auth'
 import { analyticsDbName, getAnalyticsCollections } from '@/lib/commerce-analytics'
+import { buildCommerceBehavior, buildCommerceInsights, activityLabel, type CommerceEventRow } from '@/lib/commerce-analytics-summary'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -93,10 +94,16 @@ export async function GET(request: Request) {
     const events = await db.collection(collections.events).find({
       createdAt: { $gte: from, $lte: to },
     }).sort({ createdAt: -1 }).toArray()
+    const shopOrders = await db.collection('orders').find({
+      type: 'ecommerce',
+      $or: [
+        { timestamp: { $gte: from, $lte: to } },
+        { createdAt: { $gte: from, $lte: to } },
+      ],
+    }).project({ id: 1, total: 1, items: 1, timestamp: 1, createdAt: 1 }).toArray()
 
     const productNameMap = await buildProductNameMap(db)
 
-    const sessionsInWindow = new Set(events.map((e: any) => String(e.sessionId || '')))
     const activeSince = new Date(Date.now() - 5 * 60 * 1000)
     const liveVisitorsNow = await db.collection(collections.sessions).countDocuments({ lastSeenAt: { $gte: activeSince } })
 
@@ -105,39 +112,33 @@ export async function GET(request: Request) {
     const weekStart = new Date(dayStart); weekStart.setDate(weekStart.getDate() - 7)
     const monthStart = new Date(dayStart); monthStart.setDate(monthStart.getDate() - 30)
 
-    const eventsToday = await db.collection(collections.events).countDocuments({ createdAt: { $gte: dayStart } })
-    const eventsWeek = await db.collection(collections.events).countDocuments({ createdAt: { $gte: weekStart } })
-    const eventsMonth = await db.collection(collections.events).countDocuments({ createdAt: { $gte: monthStart } })
-
-    const sessionEventCounts: Record<string, number> = {}
-    for (const e of events) {
-      const sid = String(e.sessionId || '')
-      sessionEventCounts[sid] = (sessionEventCounts[sid] || 0) + 1
+    const visitorEventTypes = ['page_view', 'product_view', 'add_to_cart', 'remove_from_cart', 'begin_checkout', 'purchase', 'search', 'wishlist_add', 'click', 'page_exit']
+    const countVisitorsSince = async (since: Date) => {
+      const rows = await db.collection(collections.events).aggregate([
+        { $match: { createdAt: { $gte: since }, eventType: { $in: visitorEventTypes } } },
+        { $group: { _id: '$sessionId' } },
+        { $count: 'visitors' },
+      ]).toArray()
+      return Number(rows[0]?.visitors) || 0
     }
-    const returningVisitors = Object.values(sessionEventCounts).filter((count) => count > 1).length
-    const visitorsTotal = sessionsInWindow.size
-    const bounceCount = Object.values(sessionEventCounts).filter((count) => count <= 1).length
-    const bounceRate = toPercent(bounceCount, visitorsTotal)
-
-    const pageMap: Record<string, { visits: number; totalTime: number; exits: number }> = {}
-    events.forEach((e: any, i: number) => {
-      if (e.eventType !== 'page_view') return
-      const key = String(e.pageName || e.path || 'Dynamic Route')
-      if (!pageMap[key]) pageMap[key] = { visits: 0, totalTime: 0, exits: 0 }
-      pageMap[key].visits += 1
-      const nextEvent = events[i - 1]
-      const currentTime = new Date(e.createdAt).getTime()
-      const nextTime = nextEvent ? new Date(nextEvent.createdAt).getTime() : currentTime
-      const spent = Math.max(0, Math.min(15 * 60, Math.round((nextTime - currentTime) / 1000)))
-      pageMap[key].totalTime += spent
-      if (spent < 15) pageMap[key].exits += 1
+    const [visitorsToday, visitorsWeek, visitorsMonth] = await Promise.all([
+      countVisitorsSince(dayStart),
+      countVisitorsSince(weekStart),
+      countVisitorsSince(monthStart),
+    ])
+    const returningVisitors = await db.collection(collections.sessions).countDocuments({
+      createdAt: { $lt: from },
+      lastSeenAt: { $gte: from, $lte: to },
     })
-    const pageVisits = Object.entries(pageMap).map(([name, data]) => ({
-      name,
-      visits: data.visits,
-      avgTimeSpentSec: data.visits ? Math.round(data.totalTime / data.visits) : 0,
-      exitRate: toPercent(data.exits, data.visits),
-    })).sort((a, b) => b.visits - a.visits)
+
+    const behavior = buildCommerceBehavior(events as CommerceEventRow[], shopOrders.map((order) => ({
+      id: String(order.id || ''),
+      total: Number(order.total) || 0,
+      timestamp: (order.timestamp || order.createdAt) as Date | string | null,
+      items: Array.isArray(order.items) ? order.items : [],
+    })))
+    const bounceRate = toPercent(behavior.bounceCount, behavior.visitors)
+    const pageVisits = behavior.pageVisits
 
     const productByMetric: Record<string, Record<string, { count: number; purchases: number }>> = {
       viewed: {},
@@ -148,11 +149,34 @@ export async function GET(request: Request) {
     for (const e of events) {
       if (!['product_view', 'add_to_cart', 'wishlist_add', 'purchase'].includes(e.eventType)) continue
       const name = resolveProductLabel(e, productNameMap)
-      if (!name) continue
+      if (!name && e.eventType !== 'purchase') continue
       if (e.eventType === 'product_view') productByMetric.viewed[name] = { count: (productByMetric.viewed[name]?.count || 0) + 1, purchases: 0 }
       if (e.eventType === 'add_to_cart') productByMetric.added[name] = { count: (productByMetric.added[name]?.count || 0) + 1, purchases: 0 }
       if (e.eventType === 'wishlist_add') productByMetric.wishlisted[name] = { count: (productByMetric.wishlisted[name]?.count || 0) + 1, purchases: 0 }
-      if (e.eventType === 'purchase') productByMetric.purchased[name] = { count: (productByMetric.purchased[name]?.count || 0) + 1, purchases: 0 }
+      if (e.eventType === 'purchase') {
+        const items = Array.isArray(e.metadata?.items) ? e.metadata.items : []
+        if (items.length) {
+          for (const item of items) {
+            const itemName = String(item).replace(/\sx\d+$/i, '').trim()
+            if (!itemName || isUnknownLabel(itemName)) continue
+            productByMetric.purchased[itemName] = { count: (productByMetric.purchased[itemName]?.count || 0) + 1, purchases: 0 }
+          }
+        } else if (name) {
+          productByMetric.purchased[name] = { count: (productByMetric.purchased[name]?.count || 0) + 1, purchases: 0 }
+        }
+      }
+    }
+    if (shopOrders.length) {
+      productByMetric.purchased = {}
+      for (const order of shopOrders) {
+        const items = Array.isArray(order.items) ? order.items : []
+        for (const item of items) {
+          const itemName = String(item?.productName || item?.name || '').trim()
+          if (!itemName || isUnknownLabel(itemName)) continue
+          const qty = Math.max(1, Number(item?.quantity) || 1)
+          productByMetric.purchased[itemName] = { count: (productByMetric.purchased[itemName]?.count || 0) + qty, purchases: 0 }
+        }
+      }
     }
     const toRanked = (bucket: Record<string, { count: number; purchases: number }>) =>
       Object.entries(bucket)
@@ -171,11 +195,11 @@ export async function GET(request: Request) {
       .filter((item) => item.count >= 3 && item.purchaseCount <= 1)
       .slice(0, 8)
 
-    const visitors = visitorsTotal
-    const productViews = events.filter((e: any) => e.eventType === 'product_view').length
-    const addToCart = events.filter((e: any) => e.eventType === 'add_to_cart').length
-    const checkout = events.filter((e: any) => e.eventType === 'begin_checkout').length
-    const completed = events.filter((e: any) => e.eventType === 'purchase').length
+    const visitors = behavior.funnel.visitors
+    const productViews = behavior.funnel.productViews
+    const addToCart = behavior.funnel.addToCart
+    const checkout = behavior.funnel.checkout
+    const completed = behavior.funnel.completed
     const funnel = {
       visitors,
       productViews,
@@ -204,42 +228,43 @@ export async function GET(request: Request) {
     const topSearches = Object.entries(searchMap).map(([query, count]) => ({ query, count })).sort((a, b) => b.count - a.count).slice(0, 10)
     const noResultSearches = Object.entries(noResultSearchMap).map(([query, count]) => ({ query, count })).sort((a, b) => b.count - a.count).slice(0, 10)
 
-    const liveActivity = events.slice(0, 25).map((e: any) => {
+    const liveActivity = behavior.liveActivity.map((e) => {
       const productLabel = resolveProductLabel(e, productNameMap)
       return {
         id: String(e._id),
-        label: `${String(e.eventType).replace(/_/g, ' ')}${productLabel ? ` · ${productLabel}` : ''}`,
-        when: new Date(e.createdAt).toISOString(),
+        label: activityLabel(e, productLabel),
+        when: new Date(e.createdAt || Date.now()).toISOString(),
         city: normalizeGeoLabel(e.city),
         deviceType: e.deviceType || 'desktop',
         path: e.path || '/',
       }
     })
 
-    const geoMap: Record<string, number> = {}
-    const cityMap: Record<string, number> = {}
-    const deviceMap: Record<string, number> = {}
-    const browserMap: Record<string, number> = {}
-    const osMap: Record<string, number> = {}
-    events.forEach((e: any) => {
-      const country = normalizeGeoLabel(e.country)
-      const city = normalizeGeoLabel(e.city)
-      if (country) geoMap[country] = (geoMap[country] || 0) + 1
-      if (city) cityMap[city] = (cityMap[city] || 0) + 1
-      deviceMap[String(e.deviceType || 'desktop')] = (deviceMap[String(e.deviceType || 'desktop')] || 0) + 1
-      browserMap[String(e.browser || 'Other')] = (browserMap[String(e.browser || 'Other')] || 0) + 1
-      osMap[String(e.os || 'Other')] = (osMap[String(e.os || 'Other')] || 0) + 1
-    })
-
+    const { geoMap, cityMap, deviceMap, browserMap, osMap } = behavior
     const topCity = Object.entries(cityMap).sort((a, b) => b[1] - a[1])[0]
-    const aiInsights = [
-      mostViewedProducts[0] ? `Product ${mostViewedProducts[0].name} is trending fast in this period.` : null,
-      funnel.dropOff.checkoutToCompleted > 50 ? 'Checkout abandonment increased and needs immediate review.' : null,
-      (deviceMap.mobile || 0) > (deviceMap.desktop || 0) ? 'Mobile users are currently converting better than desktop users.' : null,
-      topCity ? `${topCity[0]} currently has the highest buying activity.` : null,
-      'Best selling window is currently observed between 7PM and 9PM.',
-      highViewsLowPurchases[0] ? `Product ${highViewsLowPurchases[0].name} has high views but low purchases; review pricing and PDP content.` : null,
-    ].filter(Boolean)
+    let mobileSessions = 0
+    let desktopSessions = 0
+    for (const device of behavior.sessionDevice.values()) {
+      if (device === 'mobile') mobileSessions += 1
+      if (device === 'desktop') desktopSessions += 1
+    }
+    const aiInsights = buildCommerceInsights({
+      trendingProduct: mostViewedProducts[0]?.name,
+      highViewProduct: highViewsLowPurchases[0]?.name,
+      checkoutDropOff: funnel.dropOff.checkoutToCompleted,
+      topCity: topCity?.[0],
+      cityIsOrders: false,
+      browseHours: behavior.browseHours,
+      orderHours: behavior.orderHours,
+      avgScroll: behavior.avgScroll,
+      activeSeconds: behavior.activeSeconds,
+      completed: behavior.completed,
+      revenue: behavior.revenue,
+      mobileSessions,
+      desktopSessions,
+      mobilePurchases: behavior.purchaseByDevice.mobile,
+      desktopPurchases: behavior.purchaseByDevice.desktop,
+    })
 
     const payload = {
       success: true,
@@ -248,9 +273,9 @@ export async function GET(request: Request) {
       from: from.toISOString(),
       to: to.toISOString(),
       dashboard: {
-        visitorsToday: eventsToday,
-        visitorsWeek: eventsWeek,
-        visitorsMonth: eventsMonth,
+        visitorsToday,
+        visitorsWeek,
+        visitorsMonth,
         liveVisitorsNow,
         returningVisitors,
         bounceRate,
