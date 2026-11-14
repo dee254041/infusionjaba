@@ -33,7 +33,12 @@ export async function GET(request: Request) {
       if (normalizedPhone.startsWith('+')) phones.push(normalizedPhone.slice(1))
       if (normalizedPhone.startsWith('+254')) phones.push(`0${normalizedPhone.slice(4)}`)
     }
-    const customerFilter = { $or: [...new Set(phones)].map(p => ({ customerPhone: p })) }
+    const customerFilter = {
+      $or: [
+        ...[...new Set(phones)].map((p) => ({ customerPhone: p })),
+        ...(session.userId ? [{ shopUserId: session.userId }] : []),
+      ],
+    }
 
     /** Shop history: only paid ecommerce orders in `orders` (unpaid flow lives in checkout sessions only). */
     const paidEcommerceFilter = {

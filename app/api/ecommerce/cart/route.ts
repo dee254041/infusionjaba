@@ -28,7 +28,7 @@ export async function GET() {
   try {
     const cart = await getCartByCustomerId(customerId)
     const items = cart?.items ?? []
-    return NextResponse.json({ success: true, items })
+    return NextResponse.json({ success: true, items }, { headers: NO_STORE })
   } catch (error) {
     console.error('[ecommerce/cart] GET error:', error)
     return NextResponse.json({ success: false, error: 'Failed to load cart' }, { status: 500 })

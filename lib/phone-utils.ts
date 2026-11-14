@@ -69,13 +69,24 @@ export function normalizeKenyaPhone(phone: string | null | undefined): string | 
   return null
 }
 
+/** Google sign-in stores `google:<sub>` in the customer phone field. That is not a number anyone can call. */
+export function isLoginPlaceholderPhone(phone: string | null | undefined): boolean {
+  return String(phone ?? "").trim().toLowerCase().startsWith("google:")
+}
+
+/** Kenyan mobile staff can dial. Login ids are dropped. */
+export function dialableKenyaPhone(phone: string | null | undefined): string | null {
+  if (isLoginPlaceholderPhone(phone)) return null
+  return normalizeKenyaPhone(phone)
+}
+
 /**
  * Format a phone number for display
  * +2547XXXXXXXX -> +254 7XX XXX XXX
  */
 export function formatPhoneDisplay(phone: string | null | undefined): string {
-  if (!phone) return ""
-  
+  if (!phone || isLoginPlaceholderPhone(phone)) return ""
+
   const normalized = normalizeKenyaPhone(phone)
   if (!normalized) return phone
   

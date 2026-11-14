@@ -27,6 +27,7 @@ export function useShopCart() {
       cart: [],
       session,
       loading: sessionLoading,
+      removingLineIds: [],
       addItem: async () => false,
       updateQuantity: async () => {},
       removeItem: async () => {},

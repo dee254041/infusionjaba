@@ -10,11 +10,13 @@ export interface ShopCustomerProfile {
   address?: string
   city?: string
   postalCode?: string
+  /** Dialable number collected at checkout. Separate from the Google login key. */
+  phone?: string
 }
 
 export interface ShopCustomer {
   _id?: ObjectId
-  phone: string // normalized +254XXXXXXXX
+  phone: string // login key: normalized +254… or google:<sub>
   googleSub?: string
   profile?: ShopCustomerProfile
   createdAt: Date

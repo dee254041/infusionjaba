@@ -2,6 +2,7 @@
 
 import { MapPin, Phone, Navigation } from "lucide-react"
 import { getOrderDeliveryInfo, toTelHref } from "@/lib/order-delivery-location"
+import { dialableKenyaPhone } from "@/lib/phone-utils"
 
 type Props = {
   order: unknown
@@ -16,7 +17,7 @@ type Props = {
  */
 export function OrderDeliveryInfo({ order, variant = "compact", className = "" }: Props) {
   const info = getOrderDeliveryInfo(order)
-  const phone = String((order as any)?.customerPhone ?? "").trim() || null
+  const phone = dialableKenyaPhone((order as any)?.customerPhone)
   const telHref = toTelHref(phone)
   const isOnline =
     String((order as any)?.orderSource || "").toLowerCase() === "online" ||

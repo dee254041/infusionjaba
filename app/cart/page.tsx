@@ -51,7 +51,7 @@ function InlineSignIn({ onSignIn }: { onSignIn: () => void }) {
 ══════════════════════════════════════════════════════════ */
 export default function CartPage() {
   const router = useRouter()
-  const { cart, session, updateQuantity, removeItem, loading } = useShopCart()
+  const { cart, session, updateQuantity, removeItem, removingLineIds, loading } = useShopCart()
   const openLoginModal = useShopLoginModal()
 
   useEffect(() => { document.title = "Cart | Infusion Jaba" }, [])
@@ -135,6 +135,7 @@ export default function CartPage() {
           <div className="space-y-3.5 sm:space-y-4">
             {cart.map((item) => {
               const uid = getUniqueId(item)
+              const removing = removingLineIds.includes(uid)
               return (
                 <div
                   key={uid}
@@ -167,14 +168,16 @@ export default function CartPage() {
                         <div className="flex items-center gap-1 rounded-xl border border-[#d8c3a4] bg-[#f7eddf] p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
                           <button
                             onClick={() => updateQuantity(uid, -1)}
-                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center text-[#6f5d4f] hover:text-[#2a201b] hover:bg-[#fff9ef] transition-all active:scale-90"
+                            disabled={removing}
+                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center text-[#6f5d4f] hover:text-[#2a201b] hover:bg-[#fff9ef] transition-all active:scale-90 disabled:opacity-40"
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </button>
                           <span className="w-8 sm:w-9 text-center text-sm font-bold text-[#2a201b]">{item.quantity}</span>
                           <button
                             onClick={() => updateQuantity(uid, 1)}
-                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center text-[#6f5d4f] hover:text-[#2a201b] hover:bg-[#fff9ef] transition-all active:scale-90"
+                            disabled={removing}
+                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center text-[#6f5d4f] hover:text-[#2a201b] hover:bg-[#fff9ef] transition-all active:scale-90 disabled:opacity-40"
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </button>
@@ -187,10 +190,12 @@ export default function CartPage() {
                           </p>
                           <button
                             onClick={() => removeItem(uid)}
-                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border border-[#deceba] bg-[#fff7ed] flex items-center justify-center text-[#9c8c7a] hover:text-[#7f3b33] hover:border-[#d7b8aa] hover:bg-[#f6e8df] transition-all"
+                            disabled={removing}
+                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border border-[#deceba] bg-[#fff7ed] flex items-center justify-center text-[#9c8c7a] hover:text-[#7f3b33] hover:border-[#d7b8aa] hover:bg-[#f6e8df] transition-all disabled:opacity-60"
                             aria-label={`Remove ${item.name}`}
+                            aria-busy={removing}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           </button>
                         </div>
                       </div>

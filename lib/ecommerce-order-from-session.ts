@@ -5,7 +5,7 @@ import { logEcommerceRecoveryCritical } from '@/lib/ecommerce-stock-reservation'
 import { maybeSendOnlineOrderSms } from '@/lib/catha-online-order-sms'
 import { trackAnalyticsEvent } from '@/lib/commerce-analytics'
 import { buildGoogleMapsUrl, parseDeliveryLocation } from '@/lib/order-delivery-location'
-import { normalizeKenyaPhone } from '@/lib/phone-utils'
+import { dialableKenyaPhone } from '@/lib/phone-utils'
 
 export type EcommerceCheckoutSessionSnapshot = {
   customerName: string
@@ -31,7 +31,10 @@ export type EcommerceCheckoutSessionDoc = {
   id: string
   status: string
   shopUserId: string
+  /** Login key. Google accounts use `google:<sub>`, which is not a dialable number. */
   customerPhone: string
+  /** Number the customer typed at checkout. */
+  contactPhone?: string | null
   amountExpected: number
   snapshot: EcommerceCheckoutSessionSnapshot
   orderId?: string | null
@@ -157,13 +160,15 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
   const orderId = newEcommerceOrderId()
   const now = new Date()
   const deliveryLocation = parseDeliveryLocation(snap.deliveryLocation)
+  // The number typed at checkout. Never the Google sign-in id stored on the shop account.
   const contactPhone =
-    normalizeKenyaPhone(snap.contactPhone) || normalizeKenyaPhone(session.customerPhone) || ''
+    dialableKenyaPhone(snap.contactPhone) || dialableKenyaPhone(session.contactPhone) || ''
   const order = {
     id: orderId,
     type: 'ecommerce' as const,
     orderSource: 'online' as const,
     sourceCheckoutSessionId: session.id,
+    shopUserId: session.shopUserId || null,
     customerName: snap.customerName,
     customerPhone: contactPhone,
     customerEmail: snap.customerEmail,
@@ -291,10 +296,58 @@ export async function createPaidEcommerceOrderFromCheckoutSession(
 export async function ensureEcommerceCheckoutOrderIndexes(db: Db): Promise<void> {
   try {
     await db.collection('orders').createIndex({ sourceCheckoutSessionId: 1 }, { unique: true, sparse: true })
+    await db.collection('orders').createIndex({ shopUserId: 1 }, { sparse: true })
   } catch (e: unknown) {
     const code = (e as { code?: number })?.code
     if (code !== 85 && code !== 86) {
       console.warn('[ecommerce-checkout] ensureEcommerceCheckoutOrderIndexes:', (e as Error)?.message)
     }
   }
+}
+
+/** Staff views must show the checkout number, not a Google sign-in id saved as the phone. */
+export async function replaceLoginPlaceholderOrderPhones(
+  db: Db,
+  orders: Array<Record<string, any>>
+): Promise<void> {
+  const targets = orders.filter((order) => String(order?.customerPhone ?? '').toLowerCase().startsWith('google:'))
+  if (targets.length === 0) return
+
+  const sessionIds = [
+    ...new Set(
+      targets
+        .map((order) => (typeof order.sourceCheckoutSessionId === 'string' ? order.sourceCheckoutSessionId : ''))
+        .filter(Boolean)
+    ),
+  ]
+  const sessions = sessionIds.length
+    ? await db
+        .collection(ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION)
+        .find({ id: { $in: sessionIds } })
+        .project({ id: 1, shopUserId: 1, contactPhone: 1, 'snapshot.contactPhone': 1 })
+        .toArray()
+    : []
+  const bySession = new Map<string, { dial: string | null; shopUserId: string | null }>()
+  for (const session of sessions) {
+    const dial = dialableKenyaPhone(session.contactPhone) || dialableKenyaPhone(session.snapshot?.contactPhone)
+    if (session.id) {
+      bySession.set(String(session.id), {
+        dial: dial || null,
+        shopUserId: typeof session.shopUserId === 'string' ? session.shopUserId : null,
+      })
+    }
+  }
+
+  await Promise.all(
+    targets.map(async (order) => {
+      const raw = String(order.customerPhone ?? '')
+      const match = bySession.get(String(order.sourceCheckoutSessionId ?? ''))
+      const dial = match?.dial || null
+      order.customerPhone = dial
+      if (!dial || !order.id) return
+      const $set: Record<string, unknown> = { customerPhone: dial, updatedAt: new Date() }
+      if (match?.shopUserId) $set.shopUserId = match.shopUserId
+      await db.collection('orders').updateOne({ id: order.id, customerPhone: raw }, { $set })
+    })
+  )
 }

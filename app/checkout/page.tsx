@@ -132,14 +132,16 @@ export default function CheckoutPage() {
       : null
   const checkoutBlocked = hoursGate?.blockCheckout === true
 
-  /* ── Pre-fill phone from session ── */
+  /* ── Pre-fill phone from a real number already saved on the account. Never from a Google id. ── */
   useEffect(() => {
-    if (session.signedIn && session.customer?.phone) {
-      const d = localDigits(session.customer.phone)
-      setPhoneDigits(d)
-      setMpesaDigits(d)
-    }
-  }, [session.signedIn, session.customer?.phone])
+    if (!session.signedIn) return
+    const source = session.customer?.contactPhone || session.customer?.phone
+    if (!source) return
+    const d = localDigits(source)
+    if (d.length !== 9 || !/^[17]/.test(d)) return
+    setPhoneDigits((prev) => (prev.length === 9 ? prev : d))
+    setMpesaDigits((prev) => (prev.length === 9 ? prev : d))
+  }, [session.signedIn, session.customer?.phone, session.customer?.contactPhone])
 
   /* ── Load settings ── */
   useEffect(() => {

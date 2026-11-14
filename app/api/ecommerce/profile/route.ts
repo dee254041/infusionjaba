@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getShopSessionFromCookie } from '@/lib/shop-auth'
 import { getShopCustomerByPhone, updateShopCustomerProfile } from '@/lib/models/shop-customer'
+import { dialableKenyaPhone } from '@/lib/phone-utils'
 
 async function getSessionPhone(): Promise<string | null> {
   const session = await getShopSessionFromCookie()
@@ -38,6 +39,10 @@ export async function PATCH(request: Request) {
     if (typeof body.address === 'string') profile.address = body.address
     if (typeof body.city === 'string') profile.city = body.city
     if (typeof body.postalCode === 'string') profile.postalCode = body.postalCode
+    if (typeof body.phone === 'string') {
+      const dial = dialableKenyaPhone(body.phone)
+      if (dial) profile.phone = dial
+    }
     const customer = await updateShopCustomerProfile(phone, profile)
     if (!customer) {
       return NextResponse.json({ success: false, error: 'Failed to update' }, { status: 500 })

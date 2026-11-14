@@ -25,7 +25,7 @@ import {
 } from '@/lib/ecommerce-opening-hours'
 import { trackAnalyticsEvent } from '@/lib/commerce-analytics'
 import { nairobiDeliveryBlockReason } from '@/lib/ecommerce-nairobi-delivery'
-import { normalizeKenyaPhone } from '@/lib/phone-utils'
+import { dialableKenyaPhone } from '@/lib/phone-utils'
 
 async function resolveDeliveryFeeKes(
   db: Awaited<ReturnType<typeof getDatabase>>,
@@ -93,6 +93,13 @@ export async function POST(request: Request) {
     }
 
     const body = parsed.data
+    const contactPhone = dialableKenyaPhone(body.customerPhone)
+    if (!contactPhone) {
+      return NextResponse.json(
+        { success: false, error: 'Enter the Kenyan phone number for this order (07… / 01… / +254…).' },
+        { status: 400 }
+      )
+    }
     const nairobiBlock = nairobiDeliveryBlockReason({
       deliveryOption: body.deliveryOption,
       address: body.deliveryAddress,
@@ -187,7 +194,7 @@ export async function POST(request: Request) {
       postalCode: (body.postalCode ?? '').trim(),
       deliveryNotes: (body.deliveryNotes ?? '').trim(),
       deliveryOption: body.deliveryOption?.trim() || null,
-      contactPhone: normalizeKenyaPhone(body.customerPhone),
+      contactPhone,
       analyticsSessionId: typeof body.analyticsSessionId === 'string' ? body.analyticsSessionId.slice(0, 80) : null,
       deliveryLocation: body.deliveryLocation
         ? {
@@ -228,6 +235,7 @@ export async function POST(request: Request) {
       status: 'pending_payment' as const,
       shopUserId: session.userId,
       customerPhone: session.phone,
+      contactPhone,
       amountExpected: serverTotal,
       snapshot,
       orderId: null as string | null,

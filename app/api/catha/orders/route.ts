@@ -19,7 +19,7 @@ import {
   diffOrderItems,
 } from '@/lib/inventory-ops'
 import { formatCathaOrderForApi } from '@/lib/catha-order-payments'
-import { normalizeKenyaPhone } from '@/lib/phone-utils'
+import { normalizeKenyaPhone, isLoginPlaceholderPhone } from '@/lib/phone-utils'
 import { parseDeliveryLocation } from '@/lib/order-delivery-location'
 import { baseLinkedListFromOrder } from '@/lib/catha-append-mpesa-payment'
 import { deleteAllAllocationsForOrder, refreshMpesaTransactionLinkMetadata } from '@/lib/catha-mpesa-order-allocations'
@@ -40,6 +40,7 @@ import {
 } from '@/lib/order-request-schemas'
 import { maybeSendCathaPaymentReceiptSms } from '@/lib/catha-payment-sms'
 import { queueCathaAuditLog } from '@/lib/catha-audit-log'
+import { replaceLoginPlaceholderOrderPhones } from '@/lib/ecommerce-order-from-session'
 
 function toIsoOrNull(value: unknown): string | null {
   if (value == null || value === false || value === '') return null
@@ -78,7 +79,7 @@ function orderDocumentToJsonSafe(order: any) {
       servedAt: null,
       servedBy: null,
       customerName: order?.customerName || null,
-      customerPhone: order?.customerPhone || null,
+      customerPhone: isLoginPlaceholderPhone(order?.customerPhone) ? null : order?.customerPhone || null,
       timestamp: new Date(),
       status: order?.status || 'pending',
     }
@@ -123,7 +124,7 @@ function orderDocumentToJson(order: any) {
     servedAt: toIsoOrNull(order.servedAt),
     servedBy: order.servedBy || null,
     customerName: order.customerName || null,
-    customerPhone: order.customerPhone || null,
+    customerPhone: isLoginPlaceholderPhone(order.customerPhone) ? null : order.customerPhone || null,
     deliveryAddress: order.deliveryAddress || null,
     deliveryNotes: order.deliveryNotes || null,
     deliveryOption: order.deliveryOption || null,
@@ -274,6 +275,7 @@ export async function GET(request: Request) {
         coll.countDocuments(filter),
         coll.aggregate(listPipeline).toArray(),
       ])
+      await replaceLoginPlaceholderOrderPhones(db, rawList)
       const orders = rawList.map((order: any) => orderDocumentToJsonSafe(order))
       const res = NextResponse.json({ orders, total, limit, skip })
       res.headers.set('Cache-Control', 'no-store')
@@ -290,7 +292,8 @@ export async function GET(request: Request) {
           { status: 404 }
         )
       }
-      
+
+      await replaceLoginPlaceholderOrderPhones(db, [order])
       return NextResponse.json(orderDocumentToJsonSafe(order))
     }
     
@@ -303,7 +306,8 @@ export async function GET(request: Request) {
       .skip(skip)
       .limit(limit)
       .toArray()
-    
+
+    await replaceLoginPlaceholderOrderPhones(db, orders)
     // Convert MongoDB _id and date strings to proper format
     const formattedOrders = orders.map((order: any) => orderDocumentToJsonSafe(order))
     

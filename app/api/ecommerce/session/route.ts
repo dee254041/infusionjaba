@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getShopSessionFromCookie } from '@/lib/shop-auth'
 import { getShopCustomerByPhone } from '@/lib/models/shop-customer'
+import { dialableKenyaPhone } from '@/lib/phone-utils'
 
 export async function GET() {
   try {
@@ -17,6 +18,7 @@ export async function GET() {
       customer: {
         id: (customer._id as any).toString(),
         phone: customer.phone,
+        contactPhone: dialableKenyaPhone(customer.profile?.phone) || dialableKenyaPhone(customer.phone),
         name: customer.profile?.fullName ?? '',
       },
     })

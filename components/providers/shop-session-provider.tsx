@@ -8,6 +8,7 @@ export interface ShopCustomer {
   id: string
   phone: string
   name: string
+  contactPhone?: string | null
 }
 
 export interface ShopSession {
@@ -37,7 +38,14 @@ export function ShopSessionProvider({ children }: { children: React.ReactNode })
       const signedIn = !!(data.signedIn && data.customer)
       setSession({
         signedIn,
-        customer: data.customer ? { id: data.customer.id, phone: data.customer.phone, name: data.customer.name ?? '' } : undefined,
+        customer: data.customer
+          ? {
+              id: data.customer.id,
+              phone: data.customer.phone,
+              name: data.customer.name ?? '',
+              contactPhone: data.customer.contactPhone ?? null,
+            }
+          : undefined,
       })
       return signedIn
     } catch {
