@@ -8,6 +8,7 @@ import {
   buildAllocationTotalsForApi,
   linkedMpesaRowsFromOrderDoc,
 } from '@/lib/catha-mpesa-order-allocations'
+import { resolveLinkablePaymentWindow, type ShiftWindowSource } from '@/lib/catha-linkable-payment-window'
 
 export async function GET(request: Request) {
   try {
@@ -84,6 +85,64 @@ export async function GET(request: Request) {
     let findLimit = recentLimit > 0 ? recentLimit : 1000
     if (linkableOnly && recentLimit > 0) {
       findLimit = Math.min(500, Math.max(recentLimit * 8, recentLimit + 60))
+    }
+
+    // Link existing is scoped to the current business day. The day ends when every
+    // shift is closed, so the next morning returns nothing until a new payment arrives.
+    // Receipt search stays unscoped so a known code can still be linked.
+    let businessDayScoped = false
+    let businessDayAfter: string | null = null
+    let businessDayClosed = false
+    if (linkableOnly && !search) {
+      const since = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000)
+      const [recentShifts, latestClosed] = await Promise.all([
+        db
+          .collection('staff_shifts')
+          .find({
+            $or: [
+              { status: { $in: ['ACTIVE', 'PENDING_CLOSURE'] } },
+              { startedAt: { $gte: since } },
+              { endedAt: { $gte: since } },
+            ],
+          })
+          .project({ startedAt: 1, endedAt: 1, clockOutAt: 1, status: 1, businessDate: 1 })
+          .limit(500)
+          .toArray(),
+        db
+          .collection('staff_shifts')
+          .find({ endedAt: { $type: 'date' } })
+          .project({ startedAt: 1, endedAt: 1, clockOutAt: 1, status: 1, businessDate: 1 })
+          .sort({ endedAt: -1 })
+          .limit(1)
+          .toArray(),
+      ])
+      const seen = new Set<string>()
+      const shiftSources: ShiftWindowSource[] = []
+      for (const shift of [...recentShifts, ...latestClosed]) {
+        const id = shift?._id?.toString() || `${shift?.startedAt}-${shift?.endedAt}`
+        if (seen.has(id)) continue
+        seen.add(id)
+        shiftSources.push({
+          startedAt: shift.startedAt,
+          endedAt: shift.endedAt,
+          clockOutAt: shift.clockOutAt,
+          status: shift.status,
+          businessDate: shift.businessDate,
+        })
+      }
+      const paymentWindow = resolveLinkablePaymentWindow(shiftSources)
+      businessDayClosed = paymentWindow.dayClosed
+      if (paymentWindow.after) {
+        businessDayScoped = true
+        businessDayAfter = paymentWindow.after.toISOString()
+        if (!query.createdAt) query.createdAt = {}
+        const previousGte = query.createdAt.$gte ? new Date(query.createdAt.$gte).getTime() : null
+        if (previousGte == null || previousGte <= paymentWindow.after.getTime()) {
+          delete query.createdAt.$gte
+          query.createdAt.$gt = paymentWindow.after
+        }
+        findLimit = 400
+      }
     }
 
     // Get transactions
@@ -232,7 +291,7 @@ export async function GET(request: Request) {
     let out = formattedTransactions
     if (linkableOnly) {
       out = out.filter((t: any) => !t.fullyAllocated)
-      if (recentLimit > 0) {
+      if (!businessDayScoped && recentLimit > 0) {
         out = out.slice(0, recentLimit)
       }
     }
@@ -242,6 +301,8 @@ export async function GET(request: Request) {
       transactions: out,
       count: out.length,
       linkableOnly: linkableOnly || undefined,
+      businessDayAfter: businessDayAfter || undefined,
+      businessDayClosed: businessDayScoped ? businessDayClosed : undefined,
     })
   } catch (error: any) {
     console.error('[M-Pesa Transactions] Error:', error)

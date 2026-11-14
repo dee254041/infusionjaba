@@ -36,6 +36,7 @@ import { UserChip } from "@/components/orders/user-chip"
 import { getStatusLabel } from "@/lib/order-utils"
 import { ReceiptModal, type ReceiptOrder } from "@/components/receipt"
 import { summarizeCathaOrderPayments } from "@/lib/catha-order-payments"
+import { partitionLinkablePayments } from "@/lib/catha-linkable-payment-window"
 import { canApproveManualMpesaVerifications, canManageOrderMpesaPayments, canManuallyAddMpesaTransaction, normalizePermissions } from "@/lib/catha-permissions-model"
 import type { OrdersDashboardSummary } from "@/lib/catha-orders-dashboard-summary"
 import { Textarea } from "@/components/ui/textarea"
@@ -4395,6 +4396,25 @@ export default function OrdersPage() {
                         tx.id &&
                         !linkedIds.has(String(tx.id))
                     )
+                    const typedExact = Number(mpesaExactAmountSearch)
+                    const priorityAmount =
+                      mpesaExactAmountSearch.trim() !== "" && Number.isFinite(typedExact)
+                        ? typedExact
+                        : live.balanceDue > 0.005
+                          ? live.balanceDue
+                          : live.orderTotal
+                    const partitioned = partitionLinkablePayments(candidateTxs, priorityAmount)
+                    const exactMode = mpesaCandidatesLoadModeRef.current === "exact"
+                    const otherRows = exactMode
+                      ? partitioned.others.filter((tx) => {
+                          const amount = Number(tx.amount)
+                          return Number.isFinite(amount) && Math.abs(amount - priorityAmount) <= 0.005
+                        })
+                      : partitioned.others
+                    const orderedTxs = [
+                      ...partitioned.exactUnlinked.map((tx) => ({ tx, group: "exact" as const })),
+                      ...otherRows.map((tx) => ({ tx, group: "other" as const })),
+                    ]
                     return (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -4528,17 +4548,21 @@ export default function OrdersPage() {
                             <span className="hidden sm:inline">Search</span>
                           </Button>
                         </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Unused payments of this amount are listed first, then the rest of this day. Search keeps only that amount.
+                          The day ends when shifts close, so the next morning this stays empty until a payment arrives.
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                           Select transaction
                         </p>
                         <div className="max-h-56 overflow-y-auto space-y-2 pr-0.5">
-                        {!loadingMpesaCandidates && candidateTxs.length === 0 && (
+                        {!loadingMpesaCandidates && orderedTxs.length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-6 px-2 rounded-lg border border-dashed">
-                            {mpesaCandidatesLoadModeRef.current === "exact"
-                              ? `No transactions with KSh ${Number(mpesaExactAmountSearch || 0).toFixed(2)} and spare balance.`
-                              : "No transactions with spare balance. Refresh or search by amount."}
+                            {exactMode
+                              ? `No payments of KSh ${Number(priorityAmount || 0).toFixed(2)} left since the last shift close.`
+                              : "No payments since the last shift close. New payments show up here once they come in."}
                           </p>
                         )}
                         {loadingMpesaCandidates && (
@@ -4547,11 +4571,20 @@ export default function OrdersPage() {
                             Loading transactions…
                           </div>
                         )}
-                        {candidateTxs.map((tx) => {
+                        {orderedTxs.map(({ tx, group }, index) => {
                           const rem = Number(tx.remainingUnallocated ?? tx.amount ?? 0)
                           const alloc = Number(tx.allocatedTotal ?? 0)
                           const isSelected = selectedMpesaTransactionId === tx.id
                           const receipt = tx.mpesaReceiptNumber || tx.mpesaRef || tx.transactionId || "—"
+                          const showHeading = index === 0 || orderedTxs[index - 1].group !== group
+                          const heading =
+                            group === "exact"
+                              ? "Same amount, not linked"
+                              : exactMode
+                                ? "Partly linked"
+                                : partitioned.exactUnlinked.length > 0
+                                  ? "Other payments this day"
+                                  : "Payments this day"
                           const statusLabel =
                             tx.allocationStatus === "full"
                               ? "Full"
@@ -4563,8 +4596,13 @@ export default function OrdersPage() {
                               ? tx.linkedOrderIds.join(", ")
                               : null
                           return (
+                            <div key={tx.id} className="space-y-2">
+                            {showHeading && (
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-0.5">
+                                {heading}
+                              </p>
+                            )}
                             <label
-                              key={tx.id}
                               className={`block rounded-xl border-2 p-3 cursor-pointer transition-all ${
                                 isSelected
                                   ? "border-emerald-500 bg-emerald-50/60 shadow-sm"
@@ -4614,6 +4652,7 @@ export default function OrdersPage() {
                                 </div>
                               </div>
                             </label>
+                            </div>
                           )
                         })}
                         </div>
