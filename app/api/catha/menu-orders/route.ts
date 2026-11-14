@@ -6,7 +6,7 @@ import { pricingForMenuOrderLines, sanitizePublicMenuPaymentFields } from "@/lib
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit-simple"
 import { logOrderSecurityEvent } from "@/lib/order-security-audit"
 import { menuOrderCreateSchema, menuOrderPutSchema, formatZodError } from "@/lib/order-request-schemas"
-import { maybeSendOnlineOrderSms } from "@/lib/catha-online-order-sms"
+import { maybeSendMenuOrderStaffSms } from "@/lib/catha-menu-order-sms"
 import { applyMenuOrderStockChange } from "@/lib/menu-order-stock"
 
 export async function GET(request: Request) {
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
     order.stockReleasedAt = stock.stockReleasedAt
 
     await db.collection("menu_orders").insertOne(order)
-    await maybeSendOnlineOrderSms(db, order)
+    await maybeSendMenuOrderStaffSms(db, order, null)
 
     const syncStatus = String(order.status || "").toLowerCase()
     if (syncStatus === "sent" || syncStatus === "active" || syncStatus === "paid") {
@@ -372,6 +372,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
     const updated = await db.collection("menu_orders").findOne({ orderId })
+    await maybeSendMenuOrderStaffSms(db, updated as Record<string, unknown> | null, existing as Record<string, unknown>)
 
     // Keep /catha/orders in sync for menu rounds (Accept / Served / pay)
     try {

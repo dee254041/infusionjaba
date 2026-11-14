@@ -74,6 +74,7 @@ interface Settings {
     securityAlertNumbers?: string[]
     shiftNotificationPhones?: string[]
     onlineOrderSmsPhones?: string[]
+    menuOrderSmsPhones?: string[]
     securityDeniedBurstThreshold?: number
     manualMpesaApprovalSmsEnabled?: boolean
     manualMpesaApprovalPhones?: string[]
@@ -202,6 +203,7 @@ export default function SettingsPage() {
   const [securityAlertNumbersText, setSecurityAlertNumbersText] = useState("")
   const [shiftNotificationPhonesText, setShiftNotificationPhonesText] = useState("")
   const [onlineOrderSmsPhonesText, setOnlineOrderSmsPhonesText] = useState("")
+  const [menuOrderSmsPhonesText, setMenuOrderSmsPhonesText] = useState("")
   const [manualMpesaApprovalSmsEnabled, setManualMpesaApprovalSmsEnabled] = useState(false)
   const [manualMpesaApprovalPhonesText, setManualMpesaApprovalPhonesText] = useState("")
   const [manualMpesaApprovalLinkExpiryMinutes, setManualMpesaApprovalLinkExpiryMinutes] = useState(60)
@@ -665,6 +667,11 @@ export default function SettingsPage() {
                 ? settings.notifications.onlineOrderSmsPhones.join(", ")
                 : ""
             )
+            setMenuOrderSmsPhonesText(
+              Array.isArray(settings.notifications.menuOrderSmsPhones)
+                ? settings.notifications.menuOrderSmsPhones.join(", ")
+                : ""
+            )
             const threshold = Number(settings.notifications.securityDeniedBurstThreshold)
             setSecurityDeniedBurstThreshold(Number.isFinite(threshold) ? Math.max(3, Math.min(100, Math.round(threshold))) : 10)
             setManualMpesaApprovalSmsEnabled(!!settings.notifications.manualMpesaApprovalSmsEnabled)
@@ -983,6 +990,21 @@ export default function SettingsPage() {
       })
       return
     }
+    const menuOrderPhonesRaw = menuOrderSmsPhonesText
+      .split(",")
+      .map((n) => n.trim())
+      .filter(Boolean)
+    const normalizedMenuOrderPhones = menuOrderPhonesRaw
+      .map((n) => normalizeKenyaPhone(n))
+      .filter((n): n is string => Boolean(n))
+    if (menuOrderPhonesRaw.length !== normalizedMenuOrderPhones.length) {
+      toast({
+        title: "Validation error",
+        description: "Menu order SMS numbers must be valid Kenyan numbers in +254 format.",
+        variant: "destructive",
+      })
+      return
+    }
     const manualApprovalPhonesRaw = manualMpesaApprovalPhonesText
       .split(",")
       .map((n) => n.trim())
@@ -1021,6 +1043,7 @@ export default function SettingsPage() {
               .map((n) => n.trim())
               .filter(Boolean),
             onlineOrderSmsPhones: normalizedOnlineOrderPhones,
+            menuOrderSmsPhones: normalizedMenuOrderPhones,
             securityDeniedBurstThreshold: Math.max(3, Math.min(100, Math.round(Number(securityDeniedBurstThreshold) || 10))),
             manualMpesaApprovalSmsEnabled,
             manualMpesaApprovalPhones: normalizedManualApprovalPhones,
@@ -1726,6 +1749,29 @@ export default function SettingsPage() {
             </TabsContent>
 
             <TabsContent value="notifications" className="space-y-6">
+              <Card id="menu-order-sms" className="border-sky-200 bg-sky-50/70 dark:border-sky-900 dark:bg-sky-950/20">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-card-foreground">
+                    <Smartphone className="h-5 w-5 text-sky-700 dark:text-sky-300" />
+                    Menu order SMS
+                  </CardTitle>
+                  <CardDescription>
+                    Get a text when a customer sends an order from the table QR menu. Draft carts do not send a message.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <Label htmlFor="menu-order-sms-phones">Menu order notification numbers</Label>
+                  <Input
+                    id="menu-order-sms-phones"
+                    value={menuOrderSmsPhonesText}
+                    onChange={(e) => setMenuOrderSmsPhonesText(e.target.value)}
+                    placeholder="07XXXXXXXX or +2547XXXXXXXX"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated Kenyan numbers. Leave empty to fall back to the online shop order numbers below.
+                  </p>
+                </CardContent>
+              </Card>
               <Card className="border-border bg-card">
                 <CardHeader>
                   <CardTitle className="text-card-foreground">Notification Preferences</CardTitle>
@@ -1805,7 +1851,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="online-order-sms-phones">Online Order SMS Numbers</Label>
+                    <Label htmlFor="online-order-sms-phones">Online shop order SMS numbers</Label>
                     <Input
                       id="online-order-sms-phones"
                       value={onlineOrderSmsPhonesText}
@@ -1813,7 +1859,7 @@ export default function SettingsPage() {
                       placeholder="+254712345678, +254700000000"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Receives SMS alerts when new online orders are placed. Use comma-separated +254 numbers.
+                      Receives SMS when a shop/delivery order is placed online. Menu (QR table) orders use the Menu order SMS numbers above.
                     </p>
                   </div>
                   <Separator />

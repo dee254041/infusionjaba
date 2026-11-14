@@ -10,6 +10,7 @@ export type CathaNotificationSettings = {
   securityAlertNumbers: string[]
   shiftNotificationPhones: string[]
   onlineOrderSmsPhones: string[]
+  menuOrderSmsPhones: string[]
   securityDeniedBurstThreshold: number
   manualMpesaApprovalSmsEnabled: boolean
   manualMpesaApprovalPhones: string[]
@@ -26,6 +27,7 @@ export const DEFAULT_CATHA_NOTIFICATIONS: CathaNotificationSettings = {
   securityAlertNumbers: [],
   shiftNotificationPhones: [],
   onlineOrderSmsPhones: [],
+  menuOrderSmsPhones: [],
   securityDeniedBurstThreshold: 10,
   manualMpesaApprovalSmsEnabled: false,
   manualMpesaApprovalPhones: [],
@@ -50,6 +52,7 @@ export async function getCathaNotificationSettings(db: Db): Promise<CathaNotific
     securityAlertNumbers: normalizeCathaSmsRecipients(stored?.securityAlertNumbers ?? []),
     shiftNotificationPhones: normalizeCathaSmsRecipients(stored?.shiftNotificationPhones ?? []),
     onlineOrderSmsPhones: normalizeCathaSmsRecipients(stored?.onlineOrderSmsPhones ?? []),
+    menuOrderSmsPhones: normalizeCathaSmsRecipients(stored?.menuOrderSmsPhones ?? []),
     manualMpesaApprovalPhones: normalizeCathaSmsRecipients(stored?.manualMpesaApprovalPhones ?? []),
     manualMpesaApprovalSmsEnabled: Boolean(stored?.manualMpesaApprovalSmsEnabled),
     manualMpesaApprovalLinkExpiryMinutes: Math.max(

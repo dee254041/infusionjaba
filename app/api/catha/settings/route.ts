@@ -40,6 +40,7 @@ export interface Settings {
     securityAlertNumbers?: string[]
     shiftNotificationPhones?: string[]
     onlineOrderSmsPhones?: string[]
+    menuOrderSmsPhones?: string[]
     securityDeniedBurstThreshold?: number
     manualMpesaApprovalSmsEnabled?: boolean
     manualMpesaApprovalPhones?: string[]
@@ -112,6 +113,7 @@ const defaultSettings: Settings = {
     securityAlertNumbers: [],
     shiftNotificationPhones: [],
     onlineOrderSmsPhones: [],
+    menuOrderSmsPhones: [],
     securityDeniedBurstThreshold: 10,
     manualMpesaApprovalSmsEnabled: false,
     manualMpesaApprovalPhones: [],
@@ -291,6 +293,9 @@ export async function PUT(request: Request) {
       }
       if (Object.prototype.hasOwnProperty.call(body.notifications, 'onlineOrderSmsPhones')) {
         notifications.onlineOrderSmsPhones = normalizePhoneNumbers(notifications.onlineOrderSmsPhones ?? [])
+      }
+      if (Object.prototype.hasOwnProperty.call(body.notifications, 'menuOrderSmsPhones')) {
+        notifications.menuOrderSmsPhones = normalizePhoneNumbers(notifications.menuOrderSmsPhones ?? [])
       }
       if (Object.prototype.hasOwnProperty.call(body.notifications, 'securityDeniedBurstThreshold')) {
         const n = Number(notifications.securityDeniedBurstThreshold)
