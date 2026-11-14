@@ -733,31 +733,32 @@ export default function AddRawMaterialPage() {
                             <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                               Sticker flavour <span className="text-red-600 dark:text-red-400 font-bold">*</span>
                             </Label>
-                            {flavorCatalog.length === 0 ? (
+                            {flavorCatalog.length === 0 && packagingStickerFlavor !== "Water" && (
                               <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-                                No flavours found in the system yet. On <strong>Batches</strong>, open{" "}
-                                <strong>Manage Flavours</strong> to add flavours first, then return here to choose one for
-                                this sticker item.
+                                Juice flavours come from <strong>Batches → Manage Flavours</strong>. You can still choose{" "}
+                                <strong>Water</strong> here for house-bottled water stickers.
                               </p>
-                            ) : (
-                              <Select
-                                value={packagingStickerFlavor || undefined}
-                                onValueChange={(v) => setPackagingStickerFlavor(v)}
-                              >
-                                <SelectTrigger className="h-11 border-2 border-slate-300 dark:border-slate-700 focus:border-amber-500 dark:focus:border-amber-500">
-                                  <SelectValue placeholder="Choose flavour from list (same as Manage Flavours)" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {flavorCatalog.map((f) => (
+                            )}
+                            <Select
+                              value={packagingStickerFlavor || undefined}
+                              onValueChange={(v) => setPackagingStickerFlavor(v)}
+                            >
+                              <SelectTrigger className="h-11 border-2 border-slate-300 dark:border-slate-700 focus:border-amber-500 dark:focus:border-amber-500">
+                                <SelectValue placeholder="Choose flavour (Water or a juice flavour)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Water">Water (bottled)</SelectItem>
+                                {flavorCatalog
+                                  .filter((f) => f.name.trim().toLowerCase() !== "water")
+                                  .map((f) => (
                                     <SelectItem key={f._id} value={f.name}>
                                       {f.name}
                                     </SelectItem>
                                   ))}
-                                </SelectContent>
-                              </Select>
-                            )}
+                              </SelectContent>
+                            </Select>
                             <p className="text-xs text-muted-foreground">
-                              Pick the exact name from your flavour master list so packing deducts the right sticker stock.
+                              Juice stickers must match the flavour line name. Water stickers are only deducted when packing bottled water.
                             </p>
                           </div>
                         )}

@@ -155,9 +155,17 @@ export async function findPrimaryStickerMaterialForSize(
     return null
   }
 
+  // House bottled-water stickers must never be used as a juice fallback SKU.
+  const excludeWaterProductStickers = {
+    $nor: [
+      { packagingStickerFlavor: { $regex: /^Water$/i } },
+      { name: { $regex: /\bwater\b/i } },
+    ],
+  }
+
   // Legacy: size-specific sticker without flavour constraint
   const sizeSpecificQuery: Record<string, unknown> | null = token
-    ? { $and: [{ name: { $regex: STICKER_NAME_REGEX } }, { name: { $regex: token } }] }
+    ? { $and: [{ name: { $regex: STICKER_NAME_REGEX } }, { name: { $regex: token } }, excludeWaterProductStickers] }
     : null
 
   const sizeSpecific = sizeSpecificQuery
@@ -167,7 +175,7 @@ export async function findPrimaryStickerMaterialForSize(
   if (sizeSpecific) return sizeSpecific
 
   const generic = await rawMaterialsCollection
-    .find({ name: { $regex: STICKER_NAME_REGEX } }, findOpts)
+    .find({ $and: [{ name: { $regex: STICKER_NAME_REGEX } }, excludeWaterProductStickers] }, findOpts)
     .sort(PRIMARY_SORT)
     .limit(1)
     .next()

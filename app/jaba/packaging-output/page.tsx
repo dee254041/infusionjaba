@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Boxes,
+  Droplet,
   Users,
   Calendar,
   TrendingUp,
@@ -411,7 +412,7 @@ export default function PackagingSessionsPage() {
               </p>
             </div>
           </div>
-          <div className="flex w-full items-center gap-2 md:w-auto">
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
             <Button
               variant="outline"
               onClick={fetchPackagingOutputs}
@@ -421,6 +422,12 @@ export default function PackagingSessionsPage() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Refresh
             </Button>
+            <Link href="/jaba/packaging-output/add/water" className="flex-1 md:flex-none">
+              <Button variant="outline" className="h-10 w-full border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/40">
+                <Droplet className="mr-2 h-4 w-4" />
+                Bottled water
+              </Button>
+            </Link>
             <Link href="/jaba/packaging-output/add" className="flex-[2] md:flex-none">
               <Button className="h-10 w-full bg-gradient-to-r from-red-600 to-red-700 shadow-md shadow-red-500/25 hover:from-red-700 hover:to-red-800">
                 <Plus className="mr-2 h-4 w-4" />
@@ -451,6 +458,12 @@ export default function PackagingSessionsPage() {
                   <Button className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800">
                     <Plus className="mr-2 h-4 w-4" />
                     Create Packaging Session
+                  </Button>
+                </Link>
+                <Link href="/jaba/packaging-output/add/water">
+                  <Button variant="outline" className="border-sky-300 text-sky-700">
+                    <Droplet className="mr-2 h-4 w-4" />
+                    Package bottled water
                   </Button>
                 </Link>
                 <Link href="/jaba/batches">

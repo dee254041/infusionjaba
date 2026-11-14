@@ -257,15 +257,20 @@ export function buildPackagedSlots(packagingOutputs: unknown[], batches: unknown
   }
 
   for (const po of packagingOutputs as Record<string, unknown>[]) {
+    const isBottledWater = String(po.productKind || '') === 'bottled_water'
     const batchId = String(po.batchId || '')
     const batch = batchById.get(batchId)
-    if (!batch) continue
-    const batchNumber = String(batch.batchNumber || po.batchNumber || '')
+    if (!batch && !isBottledWater) continue
+    const batchNumber = String(
+      (batch && batch.batchNumber) || po.batchNumber || (isBottledWater ? 'WATER' : '')
+    )
     if (!batchNumber) continue
-    const batchFlavor = String(batch.flavor || '')
+    const batchFlavor = String((batch && batch.flavor) || (isBottledWater ? 'Water' : ''))
     const flavourSeg = flavourSegFromPackaging(po, batchFlavor)
     const flavorLabel = String(po.flavourName || batchFlavor || 'Unknown').trim()
-    const productType = String(batch.productCategory || 'Juice')
+    const productType = String(
+      (batch && batch.productCategory) || (isBottledWater ? 'Bottled Water' : 'Juice')
+    )
     const pkgNumRaw = String(po.packageNumber || '').trim()
     const packageNumber =
       pkgNumRaw && pkgNumRaw.startsWith('PKG-') ? pkgNumRaw : String(po.batchNumber || batchNumber || '')
@@ -273,7 +278,9 @@ export function buildPackagedSlots(packagingOutputs: unknown[], batches: unknown
     const containers = Array.isArray(po.containers) ? po.containers : []
     const poOid = mongoIdString(po._id)
     if (!poOid) continue
-    const batchFifoTime = batchFifoPrimaryTime(batch)
+    const batchFifoTime = batch
+      ? batchFifoPrimaryTime(batch)
+      : timeMs(po.createdAt) || timeMs(po.packagingDate) || 0
     const poSortAt = timeMs(po.createdAt) || timeMs(po.packagingDate) || 0
 
     for (const c of containers as Record<string, unknown>[]) {
@@ -287,7 +294,7 @@ export function buildPackagedSlots(packagingOutputs: unknown[], batches: unknown
       slots.push({
         slotId,
         packagingOutputId: poOid,
-        batchId,
+        batchId: batchId || (isBottledWater ? 'WATER-HOUSE' : ''),
         batchNumber,
         packageNumber,
         flavourLineId: po.flavourLineId != null ? String(po.flavourLineId) : undefined,

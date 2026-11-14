@@ -48,6 +48,7 @@ export const ROUTE_PERMISSION_MAP: Record<string, PermissionKey> = {
   '/jaba/batches/': 'production.batches',      // [id] pages
   '/jaba/packaging-output': 'production.packaging',
   '/jaba/packaging-output/add': 'production.createSession',
+  '/jaba/packaging-output/add/water': 'production.createSession',
   '/jaba/raw-materials': 'production.rawMaterials',
   '/jaba/raw-materials/flow': 'production.rawMaterials',
   '/jaba/raw-materials/add': 'production.addMaterial',

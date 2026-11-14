@@ -90,6 +90,7 @@ export async function GET(request: Request) {
     let finishedGoodsStock250ml = 0
 
     packagingOutputs.forEach((po: any) => {
+      if (po.productKind === 'bottled_water') return
       if (po.containers && Array.isArray(po.containers)) {
         po.containers.forEach((container: any) => {
           const qty = parseFloat(container.quantity) || 0
@@ -112,6 +113,7 @@ export async function GET(request: Request) {
       .forEach((note: any) => {
         if (note.items && Array.isArray(note.items)) {
           note.items.forEach((item: any) => {
+            if (item.productType === 'Bottled Water' || item.batchNumber === 'WATER') return
             const qty = parseFloat(item.quantity) || 0
             if (item.size === '250ml') {
               finishedGoodsStock250ml = Math.max(0, finishedGoodsStock250ml - qty)

@@ -23,6 +23,12 @@ import {
   executeMultiFlavourPackagingTransaction,
   PackagingApiError,
 } from '@/lib/jaba-packaging-multi-save'
+import { executeBottledWaterPackagingTransaction } from '@/lib/jaba-bottled-water-packaging'
+import {
+  JABA_BOTTLED_WATER_PRODUCT_KIND,
+  JABA_WATER_FLAVOUR_NAME,
+  isBottledWaterPackaging,
+} from '@/lib/jaba-bottled-water'
 import type { MongoClient } from 'mongodb'
 
 export const runtime = 'nodejs'
@@ -234,6 +240,110 @@ async function handleMultiFlavourPackagingPost(
   }
 }
 
+async function handleBottledWaterPackagingPost(
+  body: Record<string, unknown>,
+  client: MongoClient,
+  db: any,
+  idempotencyKey: string
+) {
+  const packagingDate = body.packagingDate
+  const supervisor = body.supervisor
+  const containers = Array.isArray(body.containers) ? body.containers : []
+
+  if (!packagingDate || !supervisor) {
+    return NextResponse.json(
+      { error: 'Missing required fields for bottled water: packagingDate and supervisor.' },
+      { status: 400 }
+    )
+  }
+
+  const finalPackageNumber =
+    (typeof body.packageNumber === 'string' && body.packageNumber.trim()) ||
+    (() => {
+      const currentYear = new Date().getFullYear()
+      const randomNum = String(Math.floor(Math.random() * 99999)).padStart(5, '0')
+      return `PKG-${currentYear}-${randomNum}`
+    })()
+
+  let idempotencyReserved: 'fresh' | null = null
+  if (idempotencyKey) {
+    const slot = await reservePackagingIdempotencyKey(db, idempotencyKey, JABA_BOTTLED_WATER_PRODUCT_KIND)
+    if (typeof slot === 'object' && 'replay' in slot) {
+      return NextResponse.json(
+        { ...(slot.replay as Record<string, unknown>), idempotentReplay: true },
+        { status: 201 }
+      )
+    }
+    if (slot === 'blocked') {
+      return NextResponse.json(
+        { error: 'This packaging save is already being processed. Wait a moment or use a new session.' },
+        { status: 409 }
+      )
+    }
+    idempotencyReserved = 'fresh'
+  }
+
+  try {
+    const result = await executeBottledWaterPackagingTransaction({
+      client,
+      db,
+      finalPackageNumber,
+      packagingDate: packagingDate as string | Date,
+      supervisor: String(supervisor),
+      teamMembers: body.teamMembers,
+      safetyChecks: Boolean(body.safetyChecks),
+      containers,
+      defects: body.defects,
+      defectReasons: body.defectReasons,
+      machineEfficiency: body.machineEfficiency,
+      waterMaterialId: typeof body.waterMaterialId === 'string' ? body.waterMaterialId : undefined,
+    })
+
+    let packagingSms: string
+    try {
+      packagingSms = buildPackagingSmsBody({
+        batchNumber: 'WATER',
+        containers,
+        flavourLabel: JABA_WATER_FLAVOUR_NAME,
+      })
+    } catch (smsBodyErr) {
+      console.error('[Packaging Output API] SMS summary build failed (water):', smsBodyErr)
+      packagingSms = `PACKAGING COMPLETE\n\nBottled Water\n\nTotal session: ${result.packagedLitres.toFixed(2)}L`
+    }
+    await sendJabaSmsForEvent('packagingCreated', packagingSms)
+    await notifyJabaRawMaterialStockAlerts(result.stockChangesForSms)
+
+    const responsePayload = {
+      success: true,
+      productKind: JABA_BOTTLED_WATER_PRODUCT_KIND,
+      packaging: {
+        ...result.packagingDoc,
+        _id: result.createdId,
+        id: result.createdId,
+        remainingLitres: result.remainingWaterLitres,
+        remainingWaterLitres: result.remainingWaterLitres,
+      },
+    }
+
+    if (idempotencyKey && idempotencyReserved === 'fresh') {
+      await db.collection(JABA_PACKAGING_IDEMPOTENCY).updateOne(
+        { key: idempotencyKey },
+        { $set: { result: responsePayload, completedAt: new Date() } }
+      )
+    }
+
+    return NextResponse.json(responsePayload, { status: 201 })
+  } catch (err: unknown) {
+    if (idempotencyKey && idempotencyReserved === 'fresh') {
+      await db.collection(JABA_PACKAGING_IDEMPOTENCY).deleteOne({ key: idempotencyKey })
+    }
+    if (err instanceof PackagingApiError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
+    throw err
+  }
+}
+
 // POST create packaging output
 export async function POST(request: Request) {
   const authResult = await requireJabaAction('production.packaging', 'add')
@@ -250,6 +360,10 @@ export async function POST(request: Request) {
     const db = client.db('infusion_jaba')
     const { ObjectId } = await import('mongodb')
     await ensurePackagingIdempotencyIndex(db)
+
+    if (String(body.productKind || '') === JABA_BOTTLED_WATER_PRODUCT_KIND) {
+      return await handleBottledWaterPackagingPost(body, client, db, idempotencyKey)
+    }
 
     const packagingLinesRaw = body.packagingLines
     if (Array.isArray(packagingLinesRaw) && packagingLinesRaw.length >= 1) {
@@ -960,8 +1074,9 @@ export async function DELETE(request: Request) {
     }
 
     // Reverse batch packed counters and remaining litres.
+    // Bottled water has no juice batch — stock is restored from materialsUsed above.
     const batchId = String(packagingOutput.batchId || '')
-    if (batchId) {
+    if (batchId && !isBottledWaterPackaging(packagingOutput)) {
       const batch = await db.collection('jaba_batches').findOne({ _id: new ObjectId(batchId) })
       if (batch) {
         const packagedLitres = Number(packagingOutput.packagedLitres) || 0

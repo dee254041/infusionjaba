@@ -461,3 +461,82 @@ describe('deriveFifoDeliveryNotePayload FIFO allocation', () => {
     ])
   })
 })
+
+describe('bottled water packaging FIFO', () => {
+  it('allocates house-bottled water without a juice batch and does not consume juice slots', () => {
+    const juiceBatch = {
+      _id: '00000000000000000000000a',
+      batchNumber: 'BCH-2026-01310',
+      flavor: 'Jaba of Dawa',
+      productCategory: 'Infusion Jaba',
+      date: '2026-03-10T10:00:00.000Z',
+    }
+    const packagingOutputs = [
+      {
+        _id: '000000000000000000000100',
+        batchId: '00000000000000000000000a',
+        batchNumber: 'BCH-2026-01310',
+        packageNumber: 'PKG-2026-10557',
+        flavourName: 'Jaba of Dawa',
+        containers: [{ size: '500ml', quantity: 40 }],
+        createdAt: '2026-03-10T10:00:00.000Z',
+      },
+      {
+        _id: '000000000000000000000200',
+        productKind: 'bottled_water',
+        batchId: 'WATER-HOUSE',
+        batchNumber: 'WATER',
+        packageNumber: 'PKG-2026-88001',
+        flavourName: 'Water',
+        containers: [{ size: '500ml', quantity: 12 }],
+        createdAt: '2026-03-14T10:00:00.000Z',
+      },
+    ]
+
+    const water = deriveFifoDeliveryNotePayload({
+      staffLines: [
+        {
+          flavor: 'Water',
+          productType: 'Bottled Water',
+          productName: 'Bottled Water',
+          size: '500ml',
+          quantity: 8,
+          pricePerUnit: 100,
+        },
+      ],
+      packagingOutputs,
+      batches: [juiceBatch],
+      deliveryNotes: [],
+      excludeNoteId: null,
+    })
+
+    expect(water.items).toEqual([
+      expect.objectContaining({
+        flavor: 'Water',
+        productType: 'Bottled Water',
+        batchNumber: 'WATER',
+        packageNumber: 'PKG-2026-88001',
+        quantity: 8,
+      }),
+    ])
+
+    const juice = deriveFifoDeliveryNotePayload({
+      staffLines: [
+        {
+          flavor: 'Jaba of Dawa',
+          productType: 'Infusion Jaba',
+          productName: 'Infusion Jaba of Dawa',
+          size: '500ml',
+          quantity: 40,
+          pricePerUnit: 120,
+        },
+      ],
+      packagingOutputs,
+      batches: [juiceBatch],
+      deliveryNotes: [],
+      excludeNoteId: null,
+    })
+
+    expect(juice.items.map((i) => [i.batchNumber, i.quantity])).toEqual([['BCH-2026-01310', 40]])
+  })
+})

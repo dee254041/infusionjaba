@@ -20,20 +20,33 @@ export async function GET(request: Request) {
 
     console.log(`[Finished Goods API] Found ${packagingOutputs.length} packaging outputs`)
 
-    // Get unique batch IDs from packaging outputs
-    const batchIds = [...new Set(packagingOutputs.map((po: any) => po.batchId).filter(Boolean))]
-    
-    if (batchIds.length === 0) {
+    const juicePackagingOutputs = packagingOutputs.filter((po: any) => po.productKind !== 'bottled_water')
+    const waterPackagingOutputs = packagingOutputs.filter((po: any) => po.productKind === 'bottled_water')
+
+    // Get unique batch IDs from juice packaging outputs only
+    const batchIds = [
+      ...new Set(
+        juicePackagingOutputs
+          .map((po: any) => po.batchId)
+          .filter((id: unknown) => typeof id === 'string' && id && ObjectId.isValid(id))
+      ),
+    ]
+
+    if (batchIds.length === 0 && waterPackagingOutputs.length === 0) {
       return NextResponse.json({ batches: [] })
     }
 
     // Get batches that have been packaged
-    const batches = await db.collection('jaba_batches')
-      .find({ 
-        _id: { $in: batchIds.map((id: string) => new ObjectId(id)) }
-      })
-      .sort({ date: -1, createdAt: -1 })
-      .toArray()
+    const batches =
+      batchIds.length > 0
+        ? await db
+            .collection('jaba_batches')
+            .find({
+              _id: { $in: batchIds.map((id: string) => new ObjectId(id)) },
+            })
+            .sort({ date: -1, createdAt: -1 })
+            .toArray()
+        : []
 
     console.log(`[Finished Goods API] Found ${batches.length} packaged batches`)
 
@@ -104,7 +117,7 @@ export async function GET(request: Request) {
       const isClosed = batch.batchClosed === true
       
       // Get all packaging outputs for this batch
-      const batchPackagingOutputs = packagingOutputs.filter(
+      const batchPackagingOutputs = juicePackagingOutputs.filter(
         (po: any) => po.batchId === batchId
       )
 
@@ -299,6 +312,93 @@ export async function GET(request: Request) {
         })),
       }
     })
+
+    if (waterPackagingOutputs.length > 0) {
+      let total250ml = 0
+      let total500ml = 0
+      let total1L = 0
+      let total2L = 0
+      waterPackagingOutputs.forEach((po: any) => {
+        if (!Array.isArray(po.containers)) return
+        po.containers.forEach((container: any) => {
+          const qty = parseFloat(container.quantity) || 0
+          if (container.size === '250ml') total250ml += qty
+          else if (container.size === '500ml') total500ml += qty
+          else if (container.size === '1L') total1L += qty
+          else if (container.size === '2L') total2L += qty
+        })
+      })
+
+      let distributed250ml = 0
+      let distributed500ml = 0
+      let distributed1L = 0
+      let distributed2L = 0
+      deliveryNotes.forEach((note: any) => {
+        if (!Array.isArray(note.items)) return
+        note.items.forEach((item: any) => {
+          if (String(item.batchNumber || '') !== 'WATER' && String(item.productType || '') !== 'Bottled Water') return
+          const qty = parseFloat(item.quantity) || 0
+          if (item.size === '250ml') distributed250ml += qty
+          else if (item.size === '500ml') distributed500ml += qty
+          else if (item.size === '1L') distributed1L += qty
+          else if (item.size === '2L') distributed2L += qty
+        })
+      })
+
+      const remaining250ml = Math.max(0, total250ml - distributed250ml)
+      const remaining500ml = Math.max(0, total500ml - distributed500ml)
+      const remaining1L = Math.max(0, total1L - distributed1L)
+      const remaining2L = Math.max(0, total2L - distributed2L)
+      const totalBottles = total250ml + total500ml + total1L + total2L
+      const distributedBottles = distributed250ml + distributed500ml + distributed1L + distributed2L
+      const remainingBottles = remaining250ml + remaining500ml + remaining1L + remaining2L
+      const latestWater = waterPackagingOutputs[0]
+      const waterDate =
+        latestWater?.packagingDate instanceof Date
+          ? latestWater.packagingDate.toISOString()
+          : latestWater?.packagingDate || latestWater?.createdAt || new Date().toISOString()
+
+      batchesWithData.unshift({
+        _id: 'WATER-HOUSE',
+        id: 'WATER-HOUSE',
+        batchNumber: 'WATER',
+        flavor: 'Water',
+        productType: 'Bottled Water',
+        date: waterDate,
+        total250ml: { original: total250ml, distributed: distributed250ml, remaining: remaining250ml },
+        total500ml: { original: total500ml, distributed: distributed500ml, remaining: remaining500ml },
+        total1L: { original: total1L, distributed: distributed1L, remaining: remaining1L },
+        total2L: { original: total2L, distributed: distributed2L, remaining: remaining2L },
+        totalBottles: {
+          original: totalBottles,
+          distributed: distributedBottles,
+          remaining: remainingBottles,
+        },
+        status: remainingBottles === 0 ? 'Sold Out' : 'Available',
+        clearedAsLoss: false,
+        byFlavour: [
+          {
+            key: 'Water',
+            label: 'Water',
+            total250ml: { original: total250ml, distributed: distributed250ml, remaining: remaining250ml },
+            total500ml: { original: total500ml, distributed: distributed500ml, remaining: remaining500ml },
+            total1L: { original: total1L, distributed: distributed1L, remaining: remaining1L },
+            total2L: { original: total2L, distributed: distributed2L, remaining: remaining2L },
+            totalBottles: {
+              original: totalBottles,
+              distributed: distributedBottles,
+              remaining: remainingBottles,
+            },
+          },
+        ],
+        packagingOutputs: waterPackagingOutputs.map((po: any) => ({
+          _id: po._id.toString(),
+          packageNumber: po.packageNumber || '',
+          packagingDate: po.packagingDate instanceof Date ? po.packagingDate.toISOString() : po.packagingDate,
+          packagingLine: po.packagingLine || '',
+        })),
+      })
+    }
 
     console.log(`[Finished Goods API] ✅ Returning ${batchesWithData.length} batches with packaging data`)
 

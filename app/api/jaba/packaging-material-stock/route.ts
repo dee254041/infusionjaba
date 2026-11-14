@@ -6,6 +6,12 @@ import {
   findPrimaryBottleMaterialForSize,
   findPrimaryStickerMaterialForSize,
 } from '@/lib/jaba-packaging-materials'
+import {
+  JABA_WATER_FLAVOUR_NAME,
+  ensureJabaBottledWaterStickers,
+  findWaterRawMaterials,
+  mapWaterMaterial,
+} from '@/lib/jaba-bottled-water'
 
 export const runtime = 'nodejs'
 
@@ -68,6 +74,14 @@ export async function GET(request: Request) {
 
     const bySize = Object.fromEntries(perSize) as Record<(typeof sizes)[number], any>
 
+    const includeWaterSource =
+      String(flavourName || '').trim().toLowerCase() === JABA_WATER_FLAVOUR_NAME.toLowerCase()
+    if (includeWaterSource) {
+      await ensureJabaBottledWaterStickers(db)
+    }
+    const waterDocs = includeWaterSource ? await findWaterRawMaterials(rawMaterialsCollection) : []
+    const waterSources = waterDocs.map((doc) => mapWaterMaterial(doc)).filter(Boolean)
+
     return NextResponse.json({
       // Kept for backward compatibility with any older UI code.
       bottle: mapOne(generic.bottleMaterial, 'bottles'),
@@ -75,6 +89,8 @@ export async function GET(request: Request) {
       bySize,
       flavourName: flavourName ?? null,
       stickerResolution: requireFlavorSpecific ? 'flavour-specific' : 'generic',
+      waterSource: waterSources[0] ?? null,
+      waterSources,
     })
   } catch (error: any) {
     console.error('[packaging-material-stock] GET error:', error)
