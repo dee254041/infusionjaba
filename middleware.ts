@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
+import { isPublicSiteOnline } from "@/lib/public-site-online"
+import { unreachableResponse } from "@/lib/server-unreachable"
 // Edge-safe helper: Get app-specific secret from env vars
 function getAppSecret(appName: 'catha' | 'jaba'): string | null {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.NEXTAUTH_URL?.startsWith('https://')
@@ -154,6 +156,16 @@ export async function middleware(request: NextRequest) {
   const allowOfflineDev = process.env.NODE_ENV !== 'production' && process.env.ALLOW_OFFLINE_DEV === 'true'
 
   try {
+  const controlPath =
+    pathname === "/server" ||
+    pathname.startsWith("/server/") ||
+    pathname === "/api/server" ||
+    pathname.startsWith("/api/server/")
+  if (!controlPath) {
+    const online = await isPublicSiteOnline(request.url)
+    if (!online) return unreachableResponse()
+  }
+
   // ─── Local offline dev bypass for Jaba routes ───
   // Allows UI testing when Mongo/Atlas is unavailable.
   if (allowOfflineDev && (pathname === "/jaba" || pathname.startsWith("/jaba/")) && !pathname.startsWith("/api")) {
@@ -382,22 +394,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Only run Edge middleware where auth redirects or legacy path rewrites are needed.
-     * Public storefront (/shop, /menu, /product, …) no longer pays Edge invocation cost.
+     * Public pages and APIs are included so the server switch can take the site offline.
+     * /server and /api/server stay out of this matcher and keep working.
      */
-    "/catha/:path*",
-    "/jaba/:path*",
-    "/pos",
-    "/inventory",
-    "/suppliers",
-    "/stock-movement",
-    "/orders",
-    "/mpesa",
-    "/expenses",
-    "/clients",
-    "/users",
-    "/distributor-requests",
-    "/reports",
-    "/settings",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|server$|server/|api/server$|api/server/).*)",
   ],
 }
