@@ -1,6 +1,7 @@
 export const SERVER_CONTROL_EMAIL = 'dee254041@gmail.com'
 export const SERVER_CONTROL_COOKIE = 'srv.session'
 export const SERVER_CONTROL_MAX_AGE_SEC = 12 * 60 * 60
+export const SERVER_CONTROL_IDLE_SEC = 5 * 60
 
 export function isServerControlEmail(email: unknown): boolean {
   return String(email || '').trim().toLowerCase() === SERVER_CONTROL_EMAIL
@@ -62,6 +63,7 @@ export async function signServerControlSession(
       JSON.stringify({
         e: SERVER_CONTROL_EMAIL,
         v: version,
+        act: Math.floor(nowMs / 1000),
         exp: Math.floor(nowMs / 1000) + SERVER_CONTROL_MAX_AGE_SEC,
       })
     )
@@ -90,9 +92,13 @@ export async function readServerControlSession(
       e?: string
       exp?: number
       v?: number
+      act?: number
     }
     if (!isServerControlEmail(json.e)) return null
-    if (!json.exp || json.exp < Math.floor(Date.now() / 1000)) return null
+    const nowSec = Math.floor(Date.now() / 1000)
+    if (!json.exp || json.exp < nowSec) return null
+    if (!Number.isInteger(json.act) || (json.act as number) > nowSec + 30) return null
+    if (nowSec - (json.act as number) > SERVER_CONTROL_IDLE_SEC) return null
     const version = Number.isInteger(json.v) && (json.v as number) >= 0 ? (json.v as number) : 0
     return { email: SERVER_CONTROL_EMAIL, version }
   } catch {

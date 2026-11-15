@@ -34,5 +34,7 @@ describe('server control access', () => {
     expect(await verifyControlPassword('dee254041@gmail.com', hash)).toBe(false)
     const next = await signServerControlSession('dee254041@gmail.com', 2)
     expect((await readServerControlSession(next))?.version).toBe(2)
+    const idle = await signServerControlSession('dee254041@gmail.com', 0, Date.now() - 6 * 60 * 1000)
+    expect(await readServerControlSession(idle)).toBeNull()
   })
 })

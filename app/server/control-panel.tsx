@@ -103,6 +103,67 @@ export function ServerControlPanel() {
     inputRef.current?.focus()
   }, [lines, ready, authenticated, loginStep, hidden])
 
+  useEffect(() => {
+    if (!authenticated) return
+    let last = Date.now()
+    let touchedAt = 0
+    let closed = false
+    const IDLE_MS = 5 * 60 * 1000
+
+    const signOut = () => {
+      if (closed) return
+      closed = true
+      setSecretPrompt(null)
+      setHidden(false)
+      setPasswdReady(null)
+      setRestoreOpen(false)
+      setRestoreReady(false)
+      setPasswdCurrent("")
+      setPasswdNext("")
+      setAuthenticated(false)
+      setLinked(false)
+      setArm(null)
+      setLoginStep("email")
+      setLoginEmail("")
+      setLines((prev) => [
+        ...prev.slice(-180),
+        { id: idRef.current++, text: "signed out after 5 minutes idle", kind: "warn" },
+      ])
+      fetch("/api/server/logout", { method: "POST" }).catch(() => {})
+    }
+
+    const mark = () => {
+      last = Date.now()
+      if (last - touchedAt < 20000) return
+      touchedAt = last
+      fetch("/api/server/touch", { method: "POST" })
+        .then((res) => {
+          if (res.status === 401) signOut()
+        })
+        .catch(() => {})
+    }
+
+    const tick = () => {
+      if (Date.now() - last >= IDLE_MS) signOut()
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick()
+    }
+
+    window.addEventListener("pointerdown", mark)
+    window.addEventListener("keydown", mark)
+    document.addEventListener("visibilitychange", onVisible)
+    const timer = window.setInterval(tick, 1000)
+    return () => {
+      closed = true
+      window.removeEventListener("pointerdown", mark)
+      window.removeEventListener("keydown", mark)
+      document.removeEventListener("visibilitychange", onVisible)
+      window.clearInterval(timer)
+    }
+  }, [authenticated])
+
   async function setSite(next: boolean) {
     setBusy(true)
     try {
@@ -274,16 +335,16 @@ export function ServerControlPanel() {
       return
     }
 
+    if (cmd === "help") {
+      wipeSecrets()
+      HELP.forEach((line) => push(line, "dim"))
+      return
+    }
+
     push(`root@infusionjaba:~# ${raw.trim()}`)
     if (!cmd) return
     if (busy) {
       push("busy", "warn")
-      return
-    }
-
-    if (cmd === "help") {
-      wipeSecrets()
-      HELP.forEach((line) => push(line, "dim"))
       return
     }
     if (cmd === "clear") {
