@@ -16,7 +16,7 @@ async function main() {
   try {
     await client.connect()
     const result = await ensureJabaSizeBottles(client.db('infusion_jaba'))
-    console.log('Jaba 500ml and 1L bottles ready')
+    console.log('Water bottles ready: 500ml Water Bottles and 1L Water Bottles')
     console.log(`Inserted: ${result.inserted.length}`)
     console.log(`Already present: ${result.existing.length}`)
   } finally {

@@ -31,6 +31,7 @@ export async function GET(request: Request) {
     const flavourParam = searchParams.get('flavour') || searchParams.get('flavor') || ''
     const flavourName = flavourParam.trim() || undefined
     const requireFlavorSpecific = Boolean(flavourName)
+    const waterBottlesOnly = String(flavourName || '').trim().toLowerCase() === 'water'
 
     const client = await clientPromise
     const db = client.db('infusion_jaba')
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
       Promise.all(
         sizes.map(async (size) => {
           const [bottleMaterial, stickerMaterial] = await Promise.all([
-            findPrimaryBottleMaterialForSize(rawMaterialsCollection, { size }),
+            findPrimaryBottleMaterialForSize(rawMaterialsCollection, { size, waterOnly: waterBottlesOnly }),
             findPrimaryStickerMaterialForSize(rawMaterialsCollection, {
               size,
               flavourName,

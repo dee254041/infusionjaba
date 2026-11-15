@@ -5,7 +5,7 @@ import {
   isFillableWaterRawMaterial,
   isWaterProductSticker,
 } from '@/lib/jaba-bottled-water'
-import { isSizeBottleName } from '@/lib/jaba-packaging-materials'
+import { isSizeBottleName, isWaterBottleName } from '@/lib/jaba-packaging-materials'
 
 describe('jaba bottled water helpers', () => {
   it('identifies fillable water raw materials and ignores packaging / flavour items', () => {
@@ -36,6 +36,15 @@ describe('jaba bottled water helpers', () => {
     expect(isSizeBottleName('500ml Water Stickers', '500ml')).toBe(false)
     expect(isSizeBottleName('1L Water Stickers', '1L')).toBe(false)
     expect(isSizeBottleName('500ml Bottles', '1L')).toBe(false)
+  })
+
+  it('keeps water bottles separate from jaba juice bottles', () => {
+    expect(isWaterBottleName('500ml Water Bottles')).toBe(true)
+    expect(isWaterBottleName('1L Water Bottles')).toBe(true)
+    expect(isWaterBottleName('500ml Bottles')).toBe(false)
+    expect(isWaterBottleName('1L Bottles')).toBe(false)
+    expect(isWaterBottleName('500ml Water Stickers')).toBe(false)
+    expect(isWaterBottleName('Watermelon Bottles')).toBe(false)
   })
 
   it('detects bottled water packaging documents', () => {

@@ -248,7 +248,7 @@ export default function PackageBottledWaterPage() {
       return
     }
     if (missingBottle || missingSticker) {
-      toast.error("Add matching 500ml / 1L bottles and Water stickers in Raw Materials before packing.")
+      toast.error("Add 500ml Water Bottles, 1L Water Bottles, and the Water stickers in Raw Materials before packing.")
       return
     }
     if (insufficient) {
@@ -324,8 +324,7 @@ export default function PackageBottledWaterPage() {
           </CardHeader>
           <CardContent className="space-y-4 p-6">
             <p className="text-sm text-muted-foreground">
-              Litres come from the same water raw material used in juice batches. Packaging deducts water, bottles, and
-              Water stickers only — juice flavour stickers are not touched.
+              Litres come from the water raw material. Packaging deducts that water, the Water bottles, and the Water stickers. Jaba juice bottles stay on juice stock.
             </p>
             {stockLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -498,7 +497,7 @@ export default function PackageBottledWaterPage() {
               Bottles to fill
             </CardTitle>
             <p className="pt-1 text-sm text-muted-foreground">
-              Only 500ml and 1L. Each unit uses one bottle and one Water sticker from raw materials.
+              Only 500ml and 1L. Each unit uses one Water bottle and one Water sticker. Jaba juice bottles stay on the juice stock.
             </p>
           </CardHeader>
           <CardContent className="space-y-4 p-6">
@@ -539,7 +538,7 @@ export default function PackageBottledWaterPage() {
                             )}
                           </>
                         ) : (
-                          <span className="text-amber-700">No {size} bottles found</span>
+                          <span className="text-amber-700">No {size} Water bottles found</span>
                         )}
                       </p>
                       <p>

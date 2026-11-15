@@ -5,6 +5,7 @@ export const BOTTLE_NAME_REGEX = /\bbott?l?e?s?\b/i
 export const STICKER_NAME_REGEX = /\b(stickers?|labels?)\b/i
 
 const PRIMARY_SORT = { currentStock: -1, updatedAt: -1, createdAt: -1 } as const
+const WATER_BOTTLE_WORD = /\bwater\b/i
 
 function escapeRegExp(input: string) {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -53,7 +54,12 @@ export async function findPrimaryPackagingMaterials(
   const opts = options?.session ? { session: options.session } : {}
   const [bottleMaterial, stickerMaterial] = await Promise.all([
     rawMaterialsCollection
-      .find({ name: { $regex: BOTTLE_NAME_REGEX } }, opts)
+      .find(
+        {
+          $and: [{ name: { $regex: BOTTLE_NAME_REGEX } }, { name: { $not: WATER_BOTTLE_WORD } }],
+        },
+        opts
+      )
       .sort(PRIMARY_SORT)
       .limit(1)
       .next(),
@@ -68,12 +74,22 @@ export async function findPrimaryPackagingMaterials(
 
 export async function findPrimaryBottleMaterialForSize(
   rawMaterialsCollection: Collection<Document>,
-  opts: { size: string; customSize?: string; session?: import('mongodb').ClientSession }
+  opts: {
+    size: string
+    customSize?: string
+    /** Bottled-water packing uses only water bottle SKUs. Juice packing never uses those. */
+    waterOnly?: boolean
+    session?: import('mongodb').ClientSession
+  }
 ): Promise<Document | null> {
   const token = packagingSizeTokenRegex(opts.size, opts.customSize)
-  const query: any = token
-    ? { $and: [{ name: { $regex: BOTTLE_NAME_REGEX } }, { name: { $regex: token } }] }
-    : { name: { $regex: BOTTLE_NAME_REGEX } }
+  const clauses: Record<string, unknown>[] = [
+    { name: { $regex: BOTTLE_NAME_REGEX } },
+    { name: { $not: STICKER_NAME_REGEX } },
+    opts.waterOnly ? { name: { $regex: WATER_BOTTLE_WORD } } : { name: { $not: WATER_BOTTLE_WORD } },
+  ]
+  if (token) clauses.push({ name: { $regex: token } })
+  const query: any = { $and: clauses }
 
   const mat = await rawMaterialsCollection
     .find(query, opts.session ? { session: opts.session } : undefined)
@@ -184,8 +200,8 @@ export async function findPrimaryStickerMaterialForSize(
 }
 
 export const JABA_SIZE_BOTTLE_SPECS = [
-  { size: '500ml', name: '500ml Bottles' },
-  { size: '1L', name: '1L Bottles' },
+  { size: '500ml', name: '500ml Water Bottles' },
+  { size: '1L', name: '1L Water Bottles' },
 ] as const
 
 /** True for a bottle SKU of this size. Stickers are excluded. */
@@ -197,9 +213,18 @@ export function isSizeBottleName(name: unknown, size: string): boolean {
   return token ? token.test(label) : false
 }
 
+/** A bottled-water bottle, separate from jaba juice bottles such as "500ml Bottles". */
+export function isWaterBottleName(name: unknown): boolean {
+  const label = String(name || '')
+  if (!BOTTLE_NAME_REGEX.test(label)) return false
+  if (STICKER_NAME_REGEX.test(label)) return false
+  if (/\bwatermelon\b/i.test(label)) return false
+  return WATER_BOTTLE_WORD.test(label)
+}
+
 /**
- * Insert 500ml Bottles and 1L Bottles with stock 1 when that size has no bottle row.
- * Existing rows keep their current stock, including 0, so resupply still finds them.
+ * Insert "500ml Water Bottles" and "1L Water Bottles" with stock 1 when that water bottle is missing.
+ * Jaba juice bottles are left untouched, including when their stock is already above zero.
  */
 export async function ensureJabaSizeBottles(db: Db): Promise<{ inserted: string[]; existing: string[] }> {
   const now = new Date()
@@ -213,8 +238,10 @@ export async function ensureJabaSizeBottles(db: Db): Promise<{ inserted: string[
       ? await collection.findOne({
           $and: [
             { name: { $regex: BOTTLE_NAME_REGEX } },
+            { name: { $regex: WATER_BOTTLE_WORD } },
             { name: { $regex: token } },
             { name: { $not: STICKER_NAME_REGEX } },
+            { name: { $not: /\bwatermelon\b/i } },
           ],
         })
       : null

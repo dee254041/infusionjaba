@@ -151,6 +151,7 @@ export async function executeBottledWaterPackagingTransaction(params: {
         const [bottleMaterial, stickerMaterial] = await Promise.all([
           findPrimaryBottleMaterialForSize(rawMaterialsCollection, {
             size: spec.size,
+            waterOnly: true,
             session: mongoSession,
           }),
           findPrimaryStickerMaterialForSize(rawMaterialsCollection, {
@@ -163,7 +164,7 @@ export async function executeBottledWaterPackagingTransaction(params: {
 
         if (!bottleMaterial) {
           throw new PackagingApiError(
-            `No bottle raw material found for size ${fmtSize(spec.size)}. Add "${spec.size} Bottles" in Raw Materials.`,
+            `No water bottle found for ${fmtSize(spec.size)}. Add "${spec.size} Water Bottles" in Raw Materials. Jaba juice bottles are not used.`,
             400
           )
         }
