@@ -79,7 +79,6 @@ export function ServerControlPanel() {
         setLines([
           { id: idRef.current++, text: "session accepted", kind: "dim" },
           { id: idRef.current++, text: `public site ${state}` },
-          { id: idRef.current++, text: "type help" , kind: "dim" },
         ])
         if (data.mustChangePassword) {
           setLines((prev) => [
@@ -505,7 +504,6 @@ export function ServerControlPanel() {
     setLinked(false)
     setArm(null)
     push(`unknown command: ${cmd}`, "warn")
-    push("type help", "dim")
   }
 
   const prompt = !authenticated
