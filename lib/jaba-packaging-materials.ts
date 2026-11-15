@@ -1,4 +1,4 @@
-import type { Collection, Document } from 'mongodb'
+import type { Collection, Db, Document } from 'mongodb'
 
 /** Matches raw material names used for packaging (same rules as packaging-output API). */
 export const BOTTLE_NAME_REGEX = /\bbott?l?e?s?\b/i
@@ -181,5 +181,65 @@ export async function findPrimaryStickerMaterialForSize(
     .next()
 
   return generic ?? null
+}
+
+export const JABA_SIZE_BOTTLE_SPECS = [
+  { size: '500ml', name: '500ml Bottles' },
+  { size: '1L', name: '1L Bottles' },
+] as const
+
+/** True for a bottle SKU of this size. Stickers are excluded. */
+export function isSizeBottleName(name: unknown, size: string): boolean {
+  const label = String(name || '')
+  if (!BOTTLE_NAME_REGEX.test(label)) return false
+  if (STICKER_NAME_REGEX.test(label)) return false
+  const token = packagingSizeTokenRegex(size)
+  return token ? token.test(label) : false
+}
+
+/**
+ * Insert 500ml Bottles and 1L Bottles with stock 1 when that size has no bottle row.
+ * Existing rows keep their current stock, including 0, so resupply still finds them.
+ */
+export async function ensureJabaSizeBottles(db: Db): Promise<{ inserted: string[]; existing: string[] }> {
+  const now = new Date()
+  const collection = db.collection('jaba_rawMaterials')
+  const inserted: string[] = []
+  const existing: string[] = []
+
+  for (const spec of JABA_SIZE_BOTTLE_SPECS) {
+    const token = packagingSizeTokenRegex(spec.size)
+    const found = token
+      ? await collection.findOne({
+          $and: [
+            { name: { $regex: BOTTLE_NAME_REGEX } },
+            { name: { $regex: token } },
+            { name: { $not: STICKER_NAME_REGEX } },
+          ],
+        })
+      : null
+
+    if (found) {
+      existing.push(String(found._id))
+      continue
+    }
+
+    const result = await collection.insertOne({
+      name: spec.name,
+      category: 'Packaging',
+      currentStock: 1,
+      unit: 'pcs',
+      minStock: 0,
+      reorderLevel: 0,
+      supplier: 'In-house',
+      preferredSupplier: 'In-house',
+      lastRestocked: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    inserted.push(result.insertedId.toString())
+  }
+
+  return { inserted, existing }
 }
 

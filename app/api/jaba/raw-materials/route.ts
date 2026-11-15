@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import clientPromise from '@/lib/mongodb'
 import { requireDeleteOtp } from '@/lib/jaba-delete-otp-guard'
 import { notifyJabaRawMaterialStockAlerts } from '@/lib/jaba-raw-material-stock-sms'
+import { ensureJabaSizeBottles } from '@/lib/jaba-packaging-materials'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +16,12 @@ export async function GET(request: Request) {
     console.log('[Raw Materials API] Fetching raw materials...')
     const client = await clientPromise
     const db = client.db('infusion_jaba')
+
+    try {
+      await ensureJabaSizeBottles(db)
+    } catch (ensureError) {
+      console.error('[Raw Materials API] Size bottle ensure skipped:', ensureError)
+    }
     
     // Build query
     const query: any = {}

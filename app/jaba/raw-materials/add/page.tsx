@@ -802,7 +802,7 @@ export default function AddRawMaterialPage() {
                           {rawMaterials.length > 0 ? (
                             rawMaterials.map((material) => (
                               <SelectItem key={material._id} value={material._id}>
-                                {material.name}
+                                {material.name} — {Number(material.currentStock) || 0} {material.unit || "pcs"}
                               </SelectItem>
                             ))
                           ) : (

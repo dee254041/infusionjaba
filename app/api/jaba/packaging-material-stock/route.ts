@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import clientPromise from '@/lib/mongodb'
 import { requireJabaAction } from '@/lib/api-jaba-permissions'
 import {
+  ensureJabaSizeBottles,
   findPrimaryPackagingMaterials,
   findPrimaryBottleMaterialForSize,
   findPrimaryStickerMaterialForSize,
@@ -34,6 +35,11 @@ export async function GET(request: Request) {
     const client = await clientPromise
     const db = client.db('infusion_jaba')
     const rawMaterialsCollection = db.collection('jaba_rawMaterials')
+    try {
+      await ensureJabaSizeBottles(db)
+    } catch (ensureError) {
+      console.error('[packaging-material-stock] Size bottle ensure skipped:', ensureError)
+    }
 
     const mapOne = (m: any, kind: 'bottles' | 'stickers') =>
       m
