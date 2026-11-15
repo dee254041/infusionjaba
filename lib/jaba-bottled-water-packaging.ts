@@ -11,8 +11,6 @@ import {
 import { PackagingApiError } from '@/lib/jaba-packaging-multi-save'
 import type { RawMaterialStockChange } from '@/lib/jaba-raw-material-stock-sms'
 import {
-  JABA_BOTTLED_WATER_BATCH_ID,
-  JABA_BOTTLED_WATER_BATCH_NUMBER,
   JABA_BOTTLED_WATER_PRODUCT_KIND,
   JABA_BOTTLED_WATER_PRODUCT_TYPE,
   JABA_WATER_FLAVOUR_NAME,
@@ -20,6 +18,7 @@ import {
   findPrimaryWaterRawMaterial,
   isAllowedBottledWaterSize,
 } from '@/lib/jaba-bottled-water'
+import { JABA_WATER_BATCHES_COLLECTION, countWaterPackSizes } from '@/lib/jaba-water-batches'
 
 type ContainerRow = { size?: string; quantity?: unknown; customSize?: unknown }
 
@@ -40,6 +39,7 @@ export async function executeBottledWaterPackagingTransaction(params: {
   defectReasons?: unknown
   machineEfficiency?: unknown
   waterMaterialId?: string
+  waterBatchId: string
 }): Promise<{
   createdId: string
   packagingDoc: Record<string, unknown>
@@ -60,6 +60,7 @@ export async function executeBottledWaterPackagingTransaction(params: {
     defectReasons,
     machineEfficiency,
     waterMaterialId,
+    waterBatchId,
   } = params
 
   const rawMaterialsCollection = db.collection('jaba_rawMaterials')
@@ -218,10 +219,33 @@ export async function executeBottledWaterPackagingTransaction(params: {
         }
       }
 
-      const existingCount = await db
-        .collection('jaba_packagingOutput')
-        .countDocuments({ productKind: JABA_BOTTLED_WATER_PRODUCT_KIND }, { session: mongoSession })
-      const packagingLine = `${year}-${JABA_BOTTLED_WATER_BATCH_NUMBER}-L${String(existingCount + 1).padStart(2, '0')}`
+      const { ObjectId } = await import('mongodb')
+      if (!ObjectId.isValid(waterBatchId)) {
+        throw new PackagingApiError('Select a bottled-water batch before packing. Water is not stored on juice batches.', 400)
+      }
+      const waterBatch = await db
+        .collection(JABA_WATER_BATCHES_COLLECTION)
+        .findOne({ _id: new ObjectId(waterBatchId) }, { session: mongoSession })
+      if (!waterBatch) {
+        throw new PackagingApiError('Water batch not found. Create a water batch, then pack into it.', 404)
+      }
+      if (String(waterBatch.status || 'open') === 'closed') {
+        throw new PackagingApiError(
+          `Water batch ${String(waterBatch.batchNumber || '')} is closed. Open it or create a new water batch.`,
+          409
+        )
+      }
+      const waterBatchNumber = String(waterBatch.batchNumber || '').trim()
+      if (!waterBatchNumber) {
+        throw new PackagingApiError('Water batch is missing a batch number.', 400)
+      }
+
+      const existingCount = await db.collection('jaba_packagingOutput').countDocuments(
+        { productKind: JABA_BOTTLED_WATER_PRODUCT_KIND, waterBatchId: String(waterBatch._id) },
+        { session: mongoSession }
+      )
+      const packagingLine = `${year}-${waterBatchNumber}-L${String(existingCount + 1).padStart(2, '0')}`
+      const packedSizes = countWaterPackSizes(containers)
 
       const materialsUsed: Array<Record<string, unknown>> = [
         {
@@ -254,8 +278,10 @@ export async function executeBottledWaterPackagingTransaction(params: {
       const packagingData: Record<string, unknown> = {
         productKind: JABA_BOTTLED_WATER_PRODUCT_KIND,
         productType: JABA_BOTTLED_WATER_PRODUCT_TYPE,
-        batchId: JABA_BOTTLED_WATER_BATCH_ID,
-        batchNumber: JABA_BOTTLED_WATER_BATCH_NUMBER,
+        batchId: String(waterBatch._id),
+        batchNumber: waterBatchNumber,
+        waterBatchId: String(waterBatch._id),
+        waterBatchNumber,
         packageNumber: finalPackageNumber.trim(),
         volumeAllocated: packagedLitres,
         packagedLitres,
@@ -315,13 +341,30 @@ export async function executeBottledWaterPackagingTransaction(params: {
       }
 
       remainingWaterLitres = litresPrecision(waterStock - packagedLitres)
+      const batchUpdate = await db.collection(JABA_WATER_BATCHES_COLLECTION).updateOne(
+        { _id: waterBatch._id, status: { $ne: 'closed' } },
+        {
+          $inc: {
+            bottles500ml: packedSizes.bottles500ml,
+            bottles1L: packedSizes.bottles1L,
+            packagedLitres,
+            sessionCount: 1,
+          },
+          $set: { updatedAt: new Date(), lastPackagedAt: new Date() },
+        },
+        { session: mongoSession }
+      )
+      if (batchUpdate.modifiedCount !== 1) {
+        throw new PackagingApiError('Water batch changed during packaging. Please refresh and try again.', 409)
+      }
+
       const movementTs = new Date()
       const movementDocs: Record<string, unknown>[] = [
         {
           type: 'DEDUCTION',
           reason: 'PACKAGING',
-          batchId: JABA_BOTTLED_WATER_BATCH_ID,
-          batchNumber: JABA_BOTTLED_WATER_BATCH_NUMBER,
+          batchId: String(waterBatch._id),
+          batchNumber: waterBatchNumber,
           packagingOutputId: createdId,
           packageNumber: finalPackageNumber.trim(),
           materialType: 'water',
@@ -359,8 +402,8 @@ export async function executeBottledWaterPackagingTransaction(params: {
         movementDocs.push({
           type: 'DEDUCTION',
           reason: 'PACKAGING',
-          batchId: JABA_BOTTLED_WATER_BATCH_ID,
-          batchNumber: JABA_BOTTLED_WATER_BATCH_NUMBER,
+          batchId: String(waterBatch._id),
+          batchNumber: waterBatchNumber,
           packagingOutputId: createdId,
           packageNumber: finalPackageNumber.trim(),
           materialType,

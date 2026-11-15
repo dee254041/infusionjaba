@@ -113,7 +113,8 @@ export async function GET(request: Request) {
       .forEach((note: any) => {
         if (note.items && Array.isArray(note.items)) {
           note.items.forEach((item: any) => {
-            if (item.productType === 'Bottled Water' || item.batchNumber === 'WATER') return
+            const itemBatch = String(item.batchNumber || '')
+            if (item.productType === 'Bottled Water' || itemBatch === 'WATER' || itemBatch.startsWith('WTR-')) return
             const qty = parseFloat(item.quantity) || 0
             if (item.size === '250ml') {
               finishedGoodsStock250ml = Math.max(0, finishedGoodsStock250ml - qty)

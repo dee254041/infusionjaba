@@ -314,90 +314,106 @@ export async function GET(request: Request) {
     })
 
     if (waterPackagingOutputs.length > 0) {
-      let total250ml = 0
-      let total500ml = 0
-      let total1L = 0
-      let total2L = 0
-      waterPackagingOutputs.forEach((po: any) => {
-        if (!Array.isArray(po.containers)) return
-        po.containers.forEach((container: any) => {
-          const qty = parseFloat(container.quantity) || 0
-          if (container.size === '250ml') total250ml += qty
-          else if (container.size === '500ml') total500ml += qty
-          else if (container.size === '1L') total1L += qty
-          else if (container.size === '2L') total2L += qty
+      const waterByBatch = new Map<string, any[]>()
+      for (const po of waterPackagingOutputs) {
+        const key = String(po.batchNumber || po.waterBatchNumber || 'WATER')
+        const list = waterByBatch.get(key) || []
+        list.push(po)
+        waterByBatch.set(key, list)
+      }
+
+      const waterRows = Array.from(waterByBatch.entries()).map(([batchNumber, outputs]) => {
+        let total250ml = 0
+        let total500ml = 0
+        let total1L = 0
+        let total2L = 0
+        outputs.forEach((po: any) => {
+          if (!Array.isArray(po.containers)) return
+          po.containers.forEach((container: any) => {
+            const qty = parseFloat(container.quantity) || 0
+            if (container.size === '250ml') total250ml += qty
+            else if (container.size === '500ml') total500ml += qty
+            else if (container.size === '1L') total1L += qty
+            else if (container.size === '2L') total2L += qty
+          })
         })
-      })
 
-      let distributed250ml = 0
-      let distributed500ml = 0
-      let distributed1L = 0
-      let distributed2L = 0
-      deliveryNotes.forEach((note: any) => {
-        if (!Array.isArray(note.items)) return
-        note.items.forEach((item: any) => {
-          if (String(item.batchNumber || '') !== 'WATER' && String(item.productType || '') !== 'Bottled Water') return
-          const qty = parseFloat(item.quantity) || 0
-          if (item.size === '250ml') distributed250ml += qty
-          else if (item.size === '500ml') distributed500ml += qty
-          else if (item.size === '1L') distributed1L += qty
-          else if (item.size === '2L') distributed2L += qty
+        let distributed250ml = 0
+        let distributed500ml = 0
+        let distributed1L = 0
+        let distributed2L = 0
+        deliveryNotes.forEach((note: any) => {
+          if (!Array.isArray(note.items)) return
+          note.items.forEach((item: any) => {
+            if (String(item.batchNumber || '') !== batchNumber) return
+            if (String(item.productType || '') !== 'Bottled Water' && String(item.flavor || '') !== batchNumber) return
+            const qty = parseFloat(item.quantity) || 0
+            if (item.size === '250ml') distributed250ml += qty
+            else if (item.size === '500ml') distributed500ml += qty
+            else if (item.size === '1L') distributed1L += qty
+            else if (item.size === '2L') distributed2L += qty
+          })
         })
-      })
 
-      const remaining250ml = Math.max(0, total250ml - distributed250ml)
-      const remaining500ml = Math.max(0, total500ml - distributed500ml)
-      const remaining1L = Math.max(0, total1L - distributed1L)
-      const remaining2L = Math.max(0, total2L - distributed2L)
-      const totalBottles = total250ml + total500ml + total1L + total2L
-      const distributedBottles = distributed250ml + distributed500ml + distributed1L + distributed2L
-      const remainingBottles = remaining250ml + remaining500ml + remaining1L + remaining2L
-      const latestWater = waterPackagingOutputs[0]
-      const waterDate =
-        latestWater?.packagingDate instanceof Date
-          ? latestWater.packagingDate.toISOString()
-          : latestWater?.packagingDate || latestWater?.createdAt || new Date().toISOString()
+        const remaining250ml = Math.max(0, total250ml - distributed250ml)
+        const remaining500ml = Math.max(0, total500ml - distributed500ml)
+        const remaining1L = Math.max(0, total1L - distributed1L)
+        const remaining2L = Math.max(0, total2L - distributed2L)
+        const totalBottles = total250ml + total500ml + total1L + total2L
+        const distributedBottles = distributed250ml + distributed500ml + distributed1L + distributed2L
+        const remainingBottles = remaining250ml + remaining500ml + remaining1L + remaining2L
+        const latestWater = outputs[0]
+        const waterDate =
+          latestWater?.packagingDate instanceof Date
+            ? latestWater.packagingDate.toISOString()
+            : latestWater?.packagingDate || latestWater?.createdAt || new Date().toISOString()
+        const rowId = String(latestWater?.waterBatchId || latestWater?.batchId || `WATER-${batchNumber}`)
 
-      batchesWithData.unshift({
-        _id: 'WATER-HOUSE',
-        id: 'WATER-HOUSE',
-        batchNumber: 'WATER',
-        flavor: 'Water',
-        productType: 'Bottled Water',
-        date: waterDate,
-        total250ml: { original: total250ml, distributed: distributed250ml, remaining: remaining250ml },
-        total500ml: { original: total500ml, distributed: distributed500ml, remaining: remaining500ml },
-        total1L: { original: total1L, distributed: distributed1L, remaining: remaining1L },
-        total2L: { original: total2L, distributed: distributed2L, remaining: remaining2L },
-        totalBottles: {
-          original: totalBottles,
-          distributed: distributedBottles,
-          remaining: remainingBottles,
-        },
-        status: remainingBottles === 0 ? 'Sold Out' : 'Available',
-        clearedAsLoss: false,
-        byFlavour: [
-          {
-            key: 'Water',
-            label: 'Water',
-            total250ml: { original: total250ml, distributed: distributed250ml, remaining: remaining250ml },
-            total500ml: { original: total500ml, distributed: distributed500ml, remaining: remaining500ml },
-            total1L: { original: total1L, distributed: distributed1L, remaining: remaining1L },
-            total2L: { original: total2L, distributed: distributed2L, remaining: remaining2L },
-            totalBottles: {
-              original: totalBottles,
-              distributed: distributedBottles,
-              remaining: remainingBottles,
-            },
+        return {
+          _id: rowId,
+          id: rowId,
+          batchNumber,
+          flavor: 'Water',
+          productType: 'Bottled Water',
+          date: waterDate,
+          total250ml: { original: total250ml, distributed: distributed250ml, remaining: remaining250ml },
+          total500ml: { original: total500ml, distributed: distributed500ml, remaining: remaining500ml },
+          total1L: { original: total1L, distributed: distributed1L, remaining: remaining1L },
+          total2L: { original: total2L, distributed: distributed2L, remaining: remaining2L },
+          totalBottles: {
+            original: totalBottles,
+            distributed: distributedBottles,
+            remaining: remainingBottles,
           },
-        ],
-        packagingOutputs: waterPackagingOutputs.map((po: any) => ({
-          _id: po._id.toString(),
-          packageNumber: po.packageNumber || '',
-          packagingDate: po.packagingDate instanceof Date ? po.packagingDate.toISOString() : po.packagingDate,
-          packagingLine: po.packagingLine || '',
-        })),
+          status: remainingBottles === 0 ? 'Sold Out' : 'Available',
+          clearedAsLoss: false,
+          byFlavour: [
+            {
+              key: batchNumber,
+              label: `Water ${batchNumber}`,
+              total250ml: { original: total250ml, distributed: distributed250ml, remaining: remaining250ml },
+              total500ml: { original: total500ml, distributed: distributed500ml, remaining: remaining500ml },
+              total1L: { original: total1L, distributed: distributed1L, remaining: remaining1L },
+              total2L: { original: total2L, distributed: distributed2L, remaining: remaining2L },
+              totalBottles: {
+                original: totalBottles,
+                distributed: distributedBottles,
+                remaining: remainingBottles,
+              },
+            },
+          ],
+          packagingOutputs: outputs.map((po: any) => ({
+            _id: po._id.toString(),
+            packageNumber: po.packageNumber || '',
+            packagingDate: po.packagingDate instanceof Date ? po.packagingDate.toISOString() : po.packagingDate,
+            packagingLine: po.packagingLine || '',
+          })),
+        }
       })
+
+      waterRows
+        .sort((a, b) => String(a.batchNumber).localeCompare(String(b.batchNumber), undefined, { numeric: true }))
+        .forEach((row) => batchesWithData.unshift(row))
     }
 
     console.log(`[Finished Goods API] ✅ Returning ${batchesWithData.length} batches with packaging data`)

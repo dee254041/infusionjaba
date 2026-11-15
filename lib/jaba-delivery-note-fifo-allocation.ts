@@ -104,7 +104,14 @@ export function normalizeFlavorName(raw: string): string {
     .toLowerCase()
 }
 
+function bottledWaterBatchKey(source: Record<string, unknown>): string {
+  return String(source.batchNumber || source.waterBatchNumber || source.flavor || '').trim()
+}
+
 export function flavourSegFromPackaging(po: Record<string, unknown>, batchFlavor: string): string {
+  if (String(po.productKind || '') === 'bottled_water') {
+    return `wtr:${normalizeFlavorName(bottledWaterBatchKey(po) || 'WATER')}`
+  }
   if (po.flavourLineId != null && String(po.flavourLineId).trim() !== '') {
     return `fid:${String(po.flavourLineId)}`
   }
@@ -113,6 +120,9 @@ export function flavourSegFromPackaging(po: Record<string, unknown>, batchFlavor
 }
 
 export function flavourSegFromStaffLine(line: StaffDistributionLineInput): string {
+  if (String(line.productType || '') === 'Bottled Water') {
+    return `wtr:${normalizeFlavorName(line.flavor)}`
+  }
   if (line.flavourLineId != null && String(line.flavourLineId).trim() !== '') {
     return `fid:${String(line.flavourLineId)}`
   }
@@ -120,6 +130,9 @@ export function flavourSegFromStaffLine(line: StaffDistributionLineInput): strin
 }
 
 export function flavourSegFromDeliveryNoteItem(item: Record<string, unknown>): string {
+  if (String(item.productType || '') === 'Bottled Water') {
+    return `wtr:${normalizeFlavorName(bottledWaterBatchKey(item))}`
+  }
   if (item.flavourLineId != null && String(item.flavourLineId).trim() !== '') {
     return `fid:${String(item.flavourLineId)}`
   }
@@ -267,7 +280,9 @@ export function buildPackagedSlots(packagingOutputs: unknown[], batches: unknown
     if (!batchNumber) continue
     const batchFlavor = String((batch && batch.flavor) || (isBottledWater ? 'Water' : ''))
     const flavourSeg = flavourSegFromPackaging(po, batchFlavor)
-    const flavorLabel = String(po.flavourName || batchFlavor || 'Unknown').trim()
+    const flavorLabel = isBottledWater
+      ? String(batchNumber || 'WATER').trim()
+      : String(po.flavourName || batchFlavor || 'Unknown').trim()
     const productType = String(
       (batch && batch.productCategory) || (isBottledWater ? 'Bottled Water' : 'Juice')
     )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveFifoDeliveryNotePayload } from '@/lib/jaba-delivery-note-fifo-allocation'
+import { deriveFifoDeliveryNotePayload, listFlavorSizePickupGroups } from '@/lib/jaba-delivery-note-fifo-allocation'
 
 describe('deriveFifoDeliveryNotePayload FIFO allocation', () => {
   it('allocates oldest batches first and supports partial take on last batch', () => {
@@ -538,5 +538,84 @@ describe('bottled water packaging FIFO', () => {
     })
 
     expect(juice.items.map((i) => [i.batchNumber, i.quantity])).toEqual([['BCH-2026-01310', 40]])
+  })
+
+  it('keeps each water batch separate from other water batches and from juice', () => {
+    const packagingOutputs = [
+      {
+        _id: '000000000000000000000201',
+        productKind: 'bottled_water',
+        batchId: '0000000000000000000000b1',
+        batchNumber: 'WTR-2026-00001',
+        packageNumber: 'PKG-2026-88002',
+        flavourName: 'Water',
+        containers: [{ size: '500ml', quantity: 10 }, { size: '1L', quantity: 4 }],
+        createdAt: '2026-03-14T10:00:00.000Z',
+      },
+      {
+        _id: '000000000000000000000202',
+        productKind: 'bottled_water',
+        batchId: '0000000000000000000000b2',
+        batchNumber: 'WTR-2026-00002',
+        packageNumber: 'PKG-2026-88003',
+        flavourName: 'Water',
+        containers: [{ size: '500ml', quantity: 20 }],
+        createdAt: '2026-03-15T10:00:00.000Z',
+      },
+      {
+        _id: '000000000000000000000100',
+        batchId: '00000000000000000000000a',
+        batchNumber: 'BCH-2026-01310',
+        packageNumber: 'PKG-2026-10557',
+        flavourName: 'Jaba of Dawa',
+        containers: [{ size: '500ml', quantity: 40 }],
+        createdAt: '2026-03-10T10:00:00.000Z',
+      },
+    ]
+    const batches = [
+      {
+        _id: '00000000000000000000000a',
+        batchNumber: 'BCH-2026-01310',
+        flavor: 'Jaba of Dawa',
+        productCategory: 'Infusion Jaba',
+        date: '2026-03-10T10:00:00.000Z',
+      },
+    ]
+
+    const groups = listFlavorSizePickupGroups(packagingOutputs, batches, [])
+    const waterGroups = groups.filter((g) => g.productType === 'Bottled Water')
+    expect(waterGroups.map((g) => `${g.displayFlavor}|${g.size}|${g.availableBottles}`).sort()).toEqual([
+      'WTR-2026-00001|1L|4',
+      'WTR-2026-00001|500ml|10',
+      'WTR-2026-00002|500ml|20',
+    ])
+
+    const note = deriveFifoDeliveryNotePayload({
+      staffLines: [
+        {
+          flavor: 'WTR-2026-00001',
+          productType: 'Bottled Water',
+          productName: 'Bottled Water WTR-2026-00001',
+          size: '500ml',
+          quantity: 6,
+          pricePerUnit: 80,
+        },
+      ],
+      packagingOutputs,
+      batches,
+      deliveryNotes: [],
+      excludeNoteId: null,
+    })
+
+    expect(note.items).toEqual([
+      expect.objectContaining({
+        batchNumber: 'WTR-2026-00001',
+        quantity: 6,
+        size: '500ml',
+      }),
+    ])
+    expect(note.items.some((item) => item.batchNumber === 'WTR-2026-00002' || item.batchNumber === 'BCH-2026-01310')).toBe(
+      false
+    )
   })
 })

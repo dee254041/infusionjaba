@@ -24,6 +24,7 @@ import {
   PackagingApiError,
 } from '@/lib/jaba-packaging-multi-save'
 import { executeBottledWaterPackagingTransaction } from '@/lib/jaba-bottled-water-packaging'
+import { JABA_WATER_BATCHES_COLLECTION, countWaterPackSizes } from '@/lib/jaba-water-batches'
 import {
   JABA_BOTTLED_WATER_PRODUCT_KIND,
   JABA_WATER_FLAVOUR_NAME,
@@ -250,9 +251,13 @@ async function handleBottledWaterPackagingPost(
   const supervisor = body.supervisor
   const containers = Array.isArray(body.containers) ? body.containers : []
 
-  if (!packagingDate || !supervisor) {
+  const waterBatchId = typeof body.waterBatchId === 'string' ? body.waterBatchId.trim() : ''
+  if (!packagingDate || !supervisor || !waterBatchId) {
     return NextResponse.json(
-      { error: 'Missing required fields for bottled water: packagingDate and supervisor.' },
+      {
+        error:
+          'Missing required fields for bottled water: packagingDate, supervisor, and a water batch. Water is tracked per water batch, separate from juice.',
+      },
       { status: 400 }
     )
   }
@@ -297,12 +302,13 @@ async function handleBottledWaterPackagingPost(
       defectReasons: body.defectReasons,
       machineEfficiency: body.machineEfficiency,
       waterMaterialId: typeof body.waterMaterialId === 'string' ? body.waterMaterialId : undefined,
+      waterBatchId,
     })
 
     let packagingSms: string
     try {
       packagingSms = buildPackagingSmsBody({
-        batchNumber: 'WATER',
+        batchNumber: String((result.packagingDoc as { batchNumber?: unknown }).batchNumber || 'WATER'),
         containers,
         flavourLabel: JABA_WATER_FLAVOUR_NAME,
       })
@@ -1074,9 +1080,30 @@ export async function DELETE(request: Request) {
     }
 
     // Reverse batch packed counters and remaining litres.
-    // Bottled water has no juice batch — stock is restored from materialsUsed above.
+    // Bottled water counters live on jaba_waterBatches, never on juice batches.
     const batchId = String(packagingOutput.batchId || '')
-    if (batchId && !isBottledWaterPackaging(packagingOutput)) {
+    if (isBottledWaterPackaging(packagingOutput)) {
+      const waterBatchId = String((packagingOutput as { waterBatchId?: unknown }).waterBatchId || batchId || '')
+      if (ObjectId.isValid(waterBatchId)) {
+        const packed = countWaterPackSizes(containers)
+        const packagedLitres = Number(packagingOutput.packagedLitres) || 0
+        const waterBatch = await db.collection(JABA_WATER_BATCHES_COLLECTION).findOne({ _id: new ObjectId(waterBatchId) })
+        if (waterBatch) {
+          await db.collection(JABA_WATER_BATCHES_COLLECTION).updateOne(
+            { _id: waterBatch._id },
+            {
+              $set: {
+                bottles500ml: Math.max(0, (Number(waterBatch.bottles500ml) || 0) - packed.bottles500ml),
+                bottles1L: Math.max(0, (Number(waterBatch.bottles1L) || 0) - packed.bottles1L),
+                packagedLitres: Math.max(0, (Number(waterBatch.packagedLitres) || 0) - packagedLitres),
+                sessionCount: Math.max(0, (Number(waterBatch.sessionCount) || 0) - 1),
+                updatedAt: new Date(),
+              },
+            }
+          )
+        }
+      }
+    } else if (batchId) {
       const batch = await db.collection('jaba_batches').findOne({ _id: new ObjectId(batchId) })
       if (batch) {
         const packagedLitres = Number(packagingOutput.packagedLitres) || 0

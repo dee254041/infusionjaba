@@ -42,6 +42,16 @@ type WaterSource = {
   unit: string
 }
 
+type WaterBatch = {
+  id: string
+  batchNumber: string
+  status: string
+  bottles500ml: number
+  bottles1L: number
+  packagedLitres: number
+  sessionCount: number
+}
+
 const WATER_SIZES = ["500ml", "1L"] as const
 
 export default function PackageBottledWaterPage() {
@@ -59,6 +69,9 @@ export default function PackageBottledWaterPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [waterMaterialId, setWaterMaterialId] = useState("")
   const [waterSources, setWaterSources] = useState<WaterSource[]>([])
+  const [waterBatches, setWaterBatches] = useState<WaterBatch[]>([])
+  const [waterBatchId, setWaterBatchId] = useState("")
+  const [creatingBatch, setCreatingBatch] = useState(false)
   const [stockBySize, setStockBySize] = useState<
     Record<"500ml" | "1L", { bottle: PackagingStockItem | null; sticker: PackagingStockItem | null }>
   >({
@@ -74,6 +87,29 @@ export default function PackageBottledWaterPage() {
     const randomNum = String(Math.floor(Math.random() * 99999)).padStart(5, "0")
     setPackageNumber(`PKG-${currentYear}-${randomNum}`)
   }, [])
+
+  const loadWaterBatches = async () => {
+    const res = await fetch("/api/jaba/water-batches")
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || "Failed to load water batches")
+    const batches: WaterBatch[] = Array.isArray(data.batches)
+      ? data.batches.map((row: Record<string, unknown>) => ({
+          id: String(row.id || row._id || ""),
+          batchNumber: String(row.batchNumber || ""),
+          status: String(row.status || "open"),
+          bottles500ml: Number(row.bottles500ml) || 0,
+          bottles1L: Number(row.bottles1L) || 0,
+          packagedLitres: Number(row.packagedLitres) || 0,
+          sessionCount: Number(row.sessionCount) || 0,
+        }))
+      : []
+    setWaterBatches(batches)
+    setWaterBatchId((prev) => {
+      if (prev && batches.some((b) => b.id === prev)) return prev
+      return batches.find((b) => b.status !== "closed")?.id || ""
+    })
+    return batches
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -95,6 +131,7 @@ export default function PackageBottledWaterPage() {
             : []
         setWaterSources(sources)
         setWaterMaterialId((prev) => prev || sources[0]?.id || "")
+        await loadWaterBatches()
         setStockError(null)
       } catch (e: unknown) {
         if (!cancelled) setStockError(e instanceof Error ? e.message : "Failed to load stock")
@@ -140,6 +177,40 @@ export default function PackageBottledWaterPage() {
     (afterBottle1L != null && afterBottle1L < 0) ||
     (afterSticker1L != null && afterSticker1L < 0)
 
+  const selectedWaterBatch = waterBatches.find((b) => b.id === waterBatchId) || null
+  const batch500After = (selectedWaterBatch?.bottles500ml || 0) + units500
+  const batch1LAfter = (selectedWaterBatch?.bottles1L || 0) + units1L
+
+  const createWaterBatch = async () => {
+    setCreatingBatch(true)
+    try {
+      const res = await fetch("/api/jaba/water-batches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: packagingDate }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to create water batch")
+      const created = data.batch
+      const row: WaterBatch = {
+        id: String(created.id || created._id),
+        batchNumber: String(created.batchNumber || ""),
+        status: String(created.status || "open"),
+        bottles500ml: 0,
+        bottles1L: 0,
+        packagedLitres: 0,
+        sessionCount: 0,
+      }
+      setWaterBatches((prev) => [row, ...prev])
+      setWaterBatchId(row.id)
+      toast.success(`Water batch ${row.batchNumber} is ready. Bottle counts stay on this batch.`)
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to create water batch")
+    } finally {
+      setCreatingBatch(false)
+    }
+  }
+
   const addTeamMember = () => {
     const name = newMember.trim()
     if (!name) return
@@ -172,6 +243,10 @@ export default function PackageBottledWaterPage() {
       toast.error("Enter 500ml and/or 1L quantities")
       return
     }
+    if (!waterBatchId) {
+      toast.error("Create or select a water batch. Counts stay on that batch, separate from juice.")
+      return
+    }
     if (missingBottle || missingSticker) {
       toast.error("Add matching 500ml / 1L bottles and Water stickers in Raw Materials before packing.")
       return
@@ -189,6 +264,7 @@ export default function PackageBottledWaterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productKind: "bottled_water",
+          waterBatchId,
           waterMaterialId: selectedWater.id,
           packageNumber,
           packagingDate,
@@ -208,8 +284,9 @@ export default function PackageBottledWaterPage() {
       if (data.idempotentReplay) {
         toast.info("This save was already recorded — inventory was not duplicated.")
       } else {
+        const batchLabel = waterBatches.find((b) => b.id === waterBatchId)?.batchNumber || "water batch"
         toast.success(
-          `Bottled water packed. Package ${data.packaging?.packageNumber || packageNumber}. Used ${packedLitres.toFixed(2)}L from ${selectedWater.name}.`
+          `Bottled water packed into ${batchLabel}. ${units500.toLocaleString()} × 500ml, ${units1L.toLocaleString()} × 1L. Package ${data.packaging?.packageNumber || packageNumber}.`
         )
       }
       router.push("/jaba/packaging-output")
@@ -296,6 +373,67 @@ export default function PackageBottledWaterPage() {
                     </p>
                   </div>
                 )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-blue-200 shadow-lg dark:border-blue-900">
+          <CardHeader className="border-b border-blue-200 bg-gradient-to-r from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/30 dark:to-sky-950/20">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Layers className="h-5 w-5 text-blue-600" />
+              Water batch
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 p-6">
+            <p className="text-sm text-muted-foreground">
+              Each water batch keeps its own 500ml and 1L counts. Distribution lists that batch on its own, separate
+              from jaba juice.
+            </p>
+            <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+              <div className="space-y-2">
+                <Label>Batch *</Label>
+                <Select value={waterBatchId || undefined} onValueChange={setWaterBatchId}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Select a water batch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {waterBatches.map((batch) => (
+                      <SelectItem key={batch.id} value={batch.id} disabled={batch.status === "closed"}>
+                        {batch.batchNumber} · 500ml {batch.bottles500ml.toLocaleString()} · 1L{" "}
+                        {batch.bottles1L.toLocaleString()}
+                        {batch.status === "closed" ? " · closed" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button type="button" variant="outline" onClick={createWaterBatch} disabled={creatingBatch}>
+                  {creatingBatch ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                  New water batch
+                </Button>
+              </div>
+            </div>
+            {selectedWaterBatch && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Already bottled</p>
+                  <p className="mt-1 font-semibold tabular-nums">
+                    {selectedWaterBatch.bottles500ml.toLocaleString()} × 500ml
+                  </p>
+                  <p className="font-semibold tabular-nums">{selectedWaterBatch.bottles1L.toLocaleString()} × 1L</p>
+                </div>
+                <div className="rounded-lg border bg-muted/40 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">This session</p>
+                  <p className="mt-1 font-semibold tabular-nums">{units500.toLocaleString()} × 500ml</p>
+                  <p className="font-semibold tabular-nums">{units1L.toLocaleString()} × 1L</p>
+                </div>
+                <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+                  <p className="text-xs uppercase text-blue-800 dark:text-blue-200">Batch total after save</p>
+                  <p className="mt-1 font-semibold tabular-nums">{batch500After.toLocaleString()} × 500ml</p>
+                  <p className="font-semibold tabular-nums">{batch1LAfter.toLocaleString()} × 1L</p>
+                </div>
               </div>
             )}
           </CardContent>

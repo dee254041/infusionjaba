@@ -318,9 +318,14 @@ function CreateDeliveryNotePageContent() {
     setExpandedBatches(next)
   }
 
+  const pickupProductName = (row: FlavorSizePickupRow) =>
+    row.productType === "Bottled Water"
+      ? `Bottled Water ${row.displayFlavor}`
+      : `${row.productType} of ${row.displayFlavor}`
+
   const addFlavorLine = (row: FlavorSizePickupRow) => {
     if (selectedItems.some((item) => item.groupKey === row.groupKey)) return
-    const productName = `${row.productType} of ${row.displayFlavor}`
+    const productName = pickupProductName(row)
     const newItem: SelectedItem = {
       id: `item-${Date.now()}-${Math.random()}`,
       groupKey: row.groupKey,
@@ -596,7 +601,7 @@ function CreateDeliveryNotePageContent() {
                     const isExpanded = expandedBatches.has(row.groupKey)
                     const isSelected = isGroupSelected(row.groupKey)
                     const selectedItem = selectedItems.find((item) => item.groupKey === row.groupKey)
-                    const productName = `${row.productType} of ${row.displayFlavor}`
+                    const productName = pickupProductName(row)
                     const hasSelectedItems = isSelected
 
                     return (
