@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server'
 import { isServerControlEmail, serverControlSigningSecret, signServerControlSession } from '@/lib/server-control'
 import { attachControlCookie } from '@/lib/server-control-cookie'
 import {
+  applyControlHeaders,
+  clientIp,
+  holdMinimum,
+  isSameOriginControlPost,
+  readJsonBody,
+  rejectCrossSite,
+} from '@/lib/server-control-guard'
+import {
   clearLoginFailures,
   loginLocked,
   markLoginFailure,
@@ -12,33 +20,29 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function clientIp(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for')
-  return (forwarded?.split(',')[0] || request.headers.get('x-real-ip') || 'unknown').trim()
-}
-
 export async function POST(request: Request) {
+  const started = Date.now()
   const ip = clientIp(request)
+  if (!isSameOriginControlPost(request)) return applyControlHeaders(rejectCrossSite())
   if (!serverControlSigningSecret()) {
     console.error('[server-control] signing secret is not set')
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    await holdMinimum(started)
+    return applyControlHeaders(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }))
   }
 
   try {
     if (await loginLocked(ip)) {
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+      await holdMinimum(started)
+      return applyControlHeaders(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }))
     }
   } catch (error) {
     console.error('[server-control] lock check failed', error)
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    await holdMinimum(started)
+    return applyControlHeaders(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }))
   }
 
-  let body: { email?: unknown; password?: unknown }
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
-  }
+  const parsed = await readJsonBody(request)
+  const body = (parsed && typeof parsed === 'object' ? parsed : {}) as { email?: unknown; password?: unknown }
 
   const emailOk = isServerControlEmail(body.email)
   let auth
@@ -46,7 +50,8 @@ export async function POST(request: Request) {
     auth = await readControlAuth()
   } catch (error) {
     console.error('[server-control] auth read failed', error)
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    await holdMinimum(started)
+    return applyControlHeaders(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }))
   }
 
   const passwordOk = await passwordMatches(String(body.password || ''), auth.passwordHash)
@@ -56,11 +61,15 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error('[server-control] lock update failed', error)
     }
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+    await holdMinimum(started)
+    return applyControlHeaders(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }))
   }
 
   const token = await signServerControlSession(String(body.email), auth.tokenVersion)
-  if (!token) return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+  if (!token) {
+    await holdMinimum(started)
+    return applyControlHeaders(NextResponse.json({ error: 'Invalid email or password' }, { status: 401 }))
+  }
 
   try {
     await clearLoginFailures(ip)
@@ -68,7 +77,8 @@ export async function POST(request: Request) {
     /* login can still succeed */
   }
 
+  await holdMinimum(started)
   const response = NextResponse.json({ ok: true })
   attachControlCookie(response, token)
-  return response
+  return applyControlHeaders(response)
 }

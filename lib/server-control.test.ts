@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isServerControlEmail, signServerControlSession, readServerControlSession } from '@/lib/server-control'
-import { hashControlPassword, passwordChangeError, verifyControlPassword } from '@/lib/server-control-password'
+import { RESTORE_PHRASE, hashControlPassword, passwordChangeError, verifyControlPassword } from '@/lib/server-control-password'
 
 describe('server control access', () => {
   it('allows only the control email', () => {
@@ -26,6 +26,7 @@ describe('server control access', () => {
     expect(passwordChangeError('dee254041@gmail.com')).toMatch(/not the email/)
     expect(passwordChangeError('short')).toMatch(/12/)
     expect(passwordChangeError('a-long-unique-passphrase')).toBeNull()
+    expect(RESTORE_PHRASE).toBe('RESET-TO-EMAIL')
     const hash = await hashControlPassword('a-long-unique-passphrase')
     expect(hash.startsWith('scrypt$')).toBe(true)
     expect(hash.includes('a-long-unique-passphrase')).toBe(false)

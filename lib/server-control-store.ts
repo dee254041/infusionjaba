@@ -4,6 +4,7 @@ import { SERVER_CONTROL_EMAIL, readServerControlSession } from '@/lib/server-con
 import { dummyControlPasswordHash, verifyControlPassword } from '@/lib/server-control-password'
 
 const DOC_ID = 'public_site'
+const ACCOUNT_LOCK = 'lock:account'
 const LOCK_MS = 15 * 60 * 1000
 const MAX_FAILS = 5
 
@@ -35,17 +36,21 @@ function lockId(ip: string): string {
   return `lock:${createHash('sha256').update(ip).digest('hex')}`
 }
 
-export async function loginLocked(ip: string): Promise<boolean> {
-  const doc = await (await controlCollection()).findOne({ _id: lockId(ip) }, { maxTimeMS: 700 })
+async function lockedId(id: string): Promise<boolean> {
+  const collection = await controlCollection()
+  const doc = await collection.findOne({ _id: id }, { maxTimeMS: 700 })
   if (!doc?.lockedUntil) return false
   const until = new Date(doc.lockedUntil).getTime()
   if (until > Date.now()) return true
-  await (await controlCollection()).deleteOne({ _id: lockId(ip) })
+  await collection.deleteOne({ _id: id })
   return false
 }
 
-export async function markLoginFailure(ip: string): Promise<void> {
-  const id = lockId(ip)
+export async function loginLocked(ip: string): Promise<boolean> {
+  return (await lockedId(lockId(ip))) || (await lockedId(ACCOUNT_LOCK))
+}
+
+async function bumpLock(id: string): Promise<void> {
   const collection = await controlCollection()
   const doc = await collection.findOne({ _id: id })
   const fails = (Number(doc?.fails) || 0) + 1
@@ -60,8 +65,15 @@ export async function markLoginFailure(ip: string): Promise<void> {
   await collection.updateOne({ _id: id }, { $set: { fails, lockedUntil: null } }, { upsert: true })
 }
 
+export async function markLoginFailure(ip: string): Promise<void> {
+  await bumpLock(lockId(ip))
+  await bumpLock(ACCOUNT_LOCK)
+}
+
 export async function clearLoginFailures(ip: string): Promise<void> {
-  await (await controlCollection()).deleteOne({ _id: lockId(ip) })
+  const collection = await controlCollection()
+  await collection.deleteOne({ _id: lockId(ip) })
+  await collection.deleteOne({ _id: ACCOUNT_LOCK })
 }
 
 export async function passwordMatches(password: string, passwordHash: string | null): Promise<boolean> {
@@ -87,6 +99,27 @@ export async function saveControlPassword(passwordHash: string, email: string): 
         updatedBy: email,
         online: existing ? existing.online !== false : true,
       },
+    },
+    { upsert: true }
+  )
+  return tokenVersion
+}
+
+export async function restoreBootstrapPassword(email: string): Promise<number> {
+  const collection = await controlCollection()
+  const existing = await collection.findOne({ _id: DOC_ID }, { projection: { tokenVersion: 1, online: 1 } })
+  const tokenVersion = (Number.isInteger(existing?.tokenVersion) ? Number(existing.tokenVersion) : 0) + 1
+  await collection.updateOne(
+    { _id: DOC_ID },
+    {
+      $set: {
+        tokenVersion,
+        passwordUpdatedAt: new Date(),
+        updatedAt: new Date(),
+        updatedBy: email,
+        online: existing ? existing.online !== false : true,
+      },
+      $unset: { passwordHash: '' },
     },
     { upsert: true }
   )

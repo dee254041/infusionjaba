@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
 import { isPublicSiteOnline } from "@/lib/public-site-online"
 import { unreachableResponse } from "@/lib/server-unreachable"
+import { applyControlHeaders } from "@/lib/server-control-guard"
 // Edge-safe helper: Get app-specific secret from env vars
 function getAppSecret(appName: 'catha' | 'jaba'): string | null {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.NEXTAUTH_URL?.startsWith('https://')
@@ -161,10 +162,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/server/") ||
     pathname === "/api/server" ||
     pathname.startsWith("/api/server/")
-  if (!controlPath) {
-    const online = await isPublicSiteOnline(request.url)
-    if (!online) return unreachableResponse()
+  if (controlPath) {
+    return applyControlHeaders(NextResponse.next())
   }
+  const online = await isPublicSiteOnline(request.url)
+  if (!online) return unreachableResponse()
 
   // ─── Local offline dev bypass for Jaba routes ───
   // Allows UI testing when Mongo/Atlas is unavailable.
@@ -395,8 +397,8 @@ export const config = {
   matcher: [
     /*
      * Public pages and APIs are included so the server switch can take the site offline.
-     * /server and /api/server stay out of this matcher and keep working.
+     * /server stays reachable while the public site is offline, and only that page gets the extra lock-down headers.
      */
-    "/((?!_next/static|_next/image|favicon.ico|icon.png|server$|server/|api/server$|api/server/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png).*)",
   ],
 }

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function ServerControlPage() {
   return (
-    <main style={{ minHeight: "100vh", background: "#fff", padding: "48px 24px" }}>
+    <main>
       <ServerControlPanel />
     </main>
   )

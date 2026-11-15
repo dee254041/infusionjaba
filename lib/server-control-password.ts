@@ -5,6 +5,8 @@ import { SERVER_CONTROL_EMAIL } from '@/lib/server-control'
 const scrypt = promisify(scryptCb)
 const KEY_LEN = 64
 
+export const RESTORE_PHRASE = 'RESET-TO-EMAIL'
+
 export function passwordChangeError(nextPassword: string): string | null {
   const next = String(nextPassword || '')
   if (next.length < 12) return 'Use at least 12 characters.'
