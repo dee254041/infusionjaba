@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { EcommerceHeader } from "@/components/ecommerce/header"
+import { StoreCredit } from "@/components/ecommerce/store-credit"
 import { useShopCart } from "@/hooks/use-shop-cart"
 import { useShopSession } from "@/components/providers/shop-session-provider"
 import { Button } from "@/components/ui/button"
@@ -569,6 +570,7 @@ export default function CheckoutPage() {
             </Link>
           </div>
         </main>
+      <StoreCredit />
       </div>
     )
   }
@@ -583,6 +585,7 @@ export default function CheckoutPage() {
             <Button className="rounded-xl h-12 px-8 bg-gradient-to-r from-[#2e241e] via-[#3a2d24] to-[#261d18] text-[#f8ecd6] border border-[#7d5f37]/55 shadow-lg font-bold">Browse Shop</Button>
           </Link>
         </main>
+      <StoreCredit />
       </div>
     )
   }
@@ -865,6 +868,7 @@ export default function CheckoutPage() {
           </div>
         </div>
       </main>
+      <StoreCredit />
 
       {/* ── M-Pesa dialog ── */}
       {showMpesaDialog && (

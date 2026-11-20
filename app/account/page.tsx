@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { EcommerceHeader } from "@/components/ecommerce/header"
+import { StoreCredit } from "@/components/ecommerce/store-credit"
 import { useShopCart } from "@/hooks/use-shop-cart"
 import { useShopSession } from "@/components/providers/shop-session-provider"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
@@ -228,6 +229,7 @@ function AccountContent() {
         <main className="container mx-auto px-4 sm:px-6 md:px-8 pb-[92px] md:pb-8">
           <SignInCard onSignIn={() => openLoginModal()} />
         </main>
+      <StoreCredit />
       </div>
     )
   }
@@ -495,6 +497,7 @@ function AccountContent() {
           </Tabs>
         )}
       </main>
+      <StoreCredit />
     </div>
   )
 }

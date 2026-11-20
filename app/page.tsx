@@ -4,6 +4,7 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import Link from "next/link"
 import { EcommerceHeader } from "@/components/ecommerce/header"
+import { StoreCredit } from "@/components/ecommerce/store-credit"
 import { ProductCard } from "@/components/ecommerce/product-card"
 import { SiteLogo } from "@/components/branding/site-logo"
 import { useShopCart } from "@/hooks/use-shop-cart"
@@ -552,9 +553,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-3 text-center text-xs text-[#9f9180]">
-            &copy; {new Date().getFullYear()} Catha Lounge. All rights reserved.
-          </div>
+          <StoreCredit tone="dark" />
         </div>
       </footer>
     </div>

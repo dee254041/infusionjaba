@@ -3,6 +3,7 @@
 import { useState, useMemo, Suspense, useEffect, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { EcommerceHeader } from "@/components/ecommerce/header"
+import { StoreCredit } from "@/components/ecommerce/store-credit"
 import { ProductCard } from "@/components/ecommerce/product-card"
 import { useShopCart } from "@/hooks/use-shop-cart"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
@@ -869,6 +870,7 @@ function ShopPageContent() {
           </div>
         </div>
       </main>
+      <StoreCredit />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { EcommerceHeader } from "@/components/ecommerce/header"
+import { StoreCredit } from "@/components/ecommerce/store-credit"
 import { useShopCart } from "@/hooks/use-shop-cart"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
 import { Button } from "@/components/ui/button"
@@ -88,6 +89,7 @@ export default function CartPage() {
             </Link>
           </div>
         </main>
+      <StoreCredit />
       </div>
     )
   }
@@ -111,6 +113,7 @@ export default function CartPage() {
             </Link>
           </div>
         </main>
+      <StoreCredit />
       </div>
     )
   }
@@ -212,6 +215,7 @@ export default function CartPage() {
           </div>
         </div>
       </main>
+      <StoreCredit />
 
       {/* Mobile sticky checkout bar */}
       <div

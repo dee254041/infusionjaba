@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { EcommerceHeader } from "@/components/ecommerce/header"
+import { StoreCredit } from "@/components/ecommerce/store-credit"
 import { useShopCart } from "@/hooks/use-shop-cart"
 import { useShopLoginModal } from "@/components/providers/shop-login-modal-provider"
 import { Button } from "@/components/ui/button"
@@ -962,6 +963,7 @@ export default function ProductPage() {
           </section>
         )}
       </main>
+      <StoreCredit />
 
       {/* Mobile sticky purchase bar - premium, conversion-focused */}
       <div
