@@ -10,6 +10,40 @@ import {
 } from '@/lib/catha-mpesa-order-allocations'
 import { resolveLinkablePaymentWindow, type ShiftWindowSource } from '@/lib/catha-linkable-payment-window'
 
+function textValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return String(value)
+  return ''
+}
+
+function moneyValue(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  if (value != null && typeof value === 'object') {
+    const decimal = (value as { $numberDecimal?: unknown }).$numberDecimal
+    if (decimal != null) return moneyValue(decimal)
+    const asString = String(value)
+    if (asString && asString !== '[object Object]') {
+      const parsed = Number(asString)
+      if (Number.isFinite(parsed)) return parsed
+    }
+  }
+  return 0
+}
+
+function isoDate(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+  return new Date(0).toISOString()
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -178,7 +212,8 @@ export async function GET(request: Request) {
     for (const o of linkedOrders) {
       if (o?.id) orderById.set(String(o.id), o)
       if (o?.mpesaTransactionId) orderByMpesaTxId.set(String(o.mpesaTransactionId), o)
-      for (const p of o.linkedPayments || []) {
+      const linkedPaymentRows = Array.isArray(o.linkedPayments) ? o.linkedPayments : []
+      for (const p of linkedPaymentRows) {
         const tid = p?.transactionId != null ? String(p.transactionId) : ''
         if (tid) orderByMpesaTxId.set(tid, o)
       }
@@ -268,24 +303,23 @@ export async function GET(request: Request) {
           allocatedTotal: totals.allocatedTotal,
           remainingUnallocated: totals.remainingUnallocated,
           allocationStatus: totals.allocationStatus,
-          mpesaRef: tx.mpesa_receipt_number || tx.transaction_id || tx.checkout_request_id || null,
+          mpesaRef: textValue(tx.mpesa_receipt_number) || textValue(tx.transaction_id) || textValue(tx.checkout_request_id) || null,
         }
       })(),
-      id: tx._id.toString(),
-      transactionType: tx.transaction_type,
-      transactionId: tx.transaction_id,
-      checkoutRequestId: tx.checkout_request_id,
-      merchantRequestId: tx.merchant_request_id,
-      amount: tx.amount,
-      phoneNumber: tx.phone_number,
-      accountReference: tx.account_reference,
+      id: tx._id != null ? String(tx._id) : '',
+      transactionType: textValue(tx.transaction_type),
+      transactionId: textValue(tx.transaction_id) || null,
+      checkoutRequestId: textValue(tx.checkout_request_id) || null,
+      merchantRequestId: textValue(tx.merchant_request_id) || null,
+      amount: moneyValue(tx.amount),
+      phoneNumber: textValue(tx.phone_number),
+      accountReference: textValue(tx.account_reference),
       status: normalizeMpesaStatus(tx.status),
-      responseCode: tx.response_code,
-      resultDesc: tx.result_desc,
-      mpesaReceiptNumber: tx.mpesa_receipt_number,
-      rawResponse: tx.raw_response,
-      createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : tx.createdAt,
-      updatedAt: tx.updatedAt instanceof Date ? tx.updatedAt.toISOString() : tx.updatedAt,
+      responseCode: textValue(tx.response_code) || null,
+      resultDesc: textValue(tx.result_desc) || null,
+      mpesaReceiptNumber: textValue(tx.mpesa_receipt_number) || null,
+      createdAt: isoDate(tx.createdAt),
+      updatedAt: isoDate(tx.updatedAt),
     }))
 
     let out = formattedTransactions

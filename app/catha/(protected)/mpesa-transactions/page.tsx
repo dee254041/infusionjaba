@@ -48,6 +48,65 @@ interface MpesaTransaction {
   updatedAt: string
 }
 
+export function asText(value: unknown): string {
+  if (typeof value === "string") return value
+  if (typeof value === "number" && Number.isFinite(value)) return String(value)
+  if (typeof value === "boolean") return String(value)
+  return ""
+}
+
+export function asMoney(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  if (value && typeof value === "object") {
+    const decimal = (value as { $numberDecimal?: unknown }).$numberDecimal
+    if (typeof decimal === "string" || typeof decimal === "number") return asMoney(decimal)
+  }
+  return 0
+}
+
+function formatKes(value: unknown): string {
+  return `KSh ${asMoney(value).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function tail(value: unknown, size: number): string {
+  const text = asText(value)
+  return text ? text.slice(-size) : ""
+}
+
+export function normalizeTransaction(raw: Partial<MpesaTransaction> | null | undefined): MpesaTransaction {
+  const createdAt = asText(raw?.createdAt)
+  const updatedAt = asText(raw?.updatedAt)
+  const allocation = raw?.allocationStatus
+  return {
+    id: asText(raw?.id),
+    transactionType: asText(raw?.transactionType) || "—",
+    transactionId: asText(raw?.transactionId) || undefined,
+    checkoutRequestId: asText(raw?.checkoutRequestId) || undefined,
+    merchantRequestId: asText(raw?.merchantRequestId) || undefined,
+    amount: asMoney(raw?.amount),
+    phoneNumber: asText(raw?.phoneNumber),
+    accountReference: asText(raw?.accountReference),
+    status: asText(raw?.status) || "PENDING",
+    responseCode: asText(raw?.responseCode) || undefined,
+    resultDesc: asText(raw?.resultDesc) || undefined,
+    mpesaReceiptNumber: asText(raw?.mpesaReceiptNumber) || undefined,
+    linked: Boolean(raw?.linked),
+    linkedOrderId: asText(raw?.linkedOrderId) || null,
+    linkedOrderIds: Array.isArray(raw?.linkedOrderIds)
+      ? raw.linkedOrderIds.map((id) => asText(id)).filter(Boolean)
+      : [],
+    allocatedTotal: asMoney(raw?.allocatedTotal),
+    remainingUnallocated: asMoney(raw?.remainingUnallocated),
+    allocationStatus: allocation === "partial" || allocation === "full" || allocation === "none" ? allocation : "none",
+    createdAt: createdAt || new Date(0).toISOString(),
+    updatedAt: updatedAt || createdAt || new Date(0).toISOString(),
+  }
+}
+
 function formatMpesaLinkedOrdersLine(tx: MpesaTransaction): string {
   if (!tx.linked) return "Not linked"
   const ids =
@@ -89,7 +148,8 @@ export default function MpesaTransactionsPage() {
       const data = await response.json()
 
       if (data.success) {
-        setTransactions(data.transactions || [])
+        const rows = Array.isArray(data.transactions) ? data.transactions : []
+        setTransactions(rows.map((row: Partial<MpesaTransaction>) => normalizeTransaction(row)))
       } else {
         throw new Error(data.error || "Failed to load transactions")
       }
@@ -111,12 +171,12 @@ export default function MpesaTransactionsPage() {
     return transactions.filter((tx) => {
       const searchLower = searchQuery.toLowerCase()
       return (
-        tx.mpesaReceiptNumber?.toLowerCase().includes(searchLower) ||
-        tx.checkoutRequestId?.toLowerCase().includes(searchLower) ||
-        tx.merchantRequestId?.toLowerCase().includes(searchLower) ||
-        tx.transactionId?.toLowerCase().includes(searchLower) ||
-        tx.accountReference.toLowerCase().includes(searchLower) ||
-        tx.phoneNumber.includes(searchQuery)
+        asText(tx.mpesaReceiptNumber).toLowerCase().includes(searchLower) ||
+        asText(tx.checkoutRequestId).toLowerCase().includes(searchLower) ||
+        asText(tx.merchantRequestId).toLowerCase().includes(searchLower) ||
+        asText(tx.transactionId).toLowerCase().includes(searchLower) ||
+        asText(tx.accountReference).toLowerCase().includes(searchLower) ||
+        asText(tx.phoneNumber).includes(searchQuery)
       )
     })
   }, [transactions, searchQuery])
@@ -136,7 +196,7 @@ export default function MpesaTransactionsPage() {
       pendingCount,
       totalCount,
       successRate,
-      formattedAmount: `KSh ${totalAmount.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      formattedAmount: formatKes(totalAmount),
     }
     if (process.env.NODE_ENV === "development") {
       console.debug("[mpesa-summary] Unified stats (mobile + desktop):", stats)
@@ -169,9 +229,10 @@ export default function MpesaTransactionsPage() {
     return styles[status] || "bg-slate-100 text-slate-600 border-0"
   }
 
-  const maskPhone = (phone: string) => {
-    if (!phone || phone.length < 8) return phone
-    return `${phone.slice(0, 4)}•••${phone.slice(-3)}`
+  const maskPhone = (phone: unknown) => {
+    const text = asText(phone)
+    if (text.length < 8) return text || "—"
+    return `${text.slice(0, 4)}•••${text.slice(-3)}`
   }
 
   const groupedByDate = useMemo(() => {
@@ -297,7 +358,7 @@ export default function MpesaTransactionsPage() {
             <div>
               <span className="text-slate-500">Avg Transaction:</span>
               <span className="ml-2 font-semibold text-slate-900">
-                KSh {avgTransaction.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                {formatKes(avgTransaction)}
               </span>
             </div>
             <div>
@@ -455,14 +516,14 @@ export default function MpesaTransactionsPage() {
                           >
                             <div className="min-w-0">
                               <p className="font-mono text-xs font-bold text-slate-900 truncate">
-                                {tx.mpesaReceiptNumber || tx.checkoutRequestId?.slice(-8) || tx.transactionId?.slice(-8) || "—"}
+                                {asText(tx.mpesaReceiptNumber) || tail(tx.checkoutRequestId, 8) || tail(tx.transactionId, 8) || "—"}
                               </p>
                               <p className="font-mono text-[10px] text-slate-500 truncate">
-                                {tx.transactionType} • {tx.checkoutRequestId?.slice(-6) || tx.id.slice(-6)}
+                                {asText(tx.transactionType) || "—"} • {tail(tx.checkoutRequestId, 6) || tail(tx.id, 6) || "—"}
                               </p>
                             </div>
                             <div className="min-w-0">
-                              {tx.accountReference?.startsWith("TXN") ? (
+                              {asText(tx.accountReference).startsWith("TXN") ? (
                                 <a
                                   href={`/catha/orders?search=${tx.accountReference}`}
                                   onClick={(e) => e.stopPropagation()}
@@ -485,7 +546,7 @@ export default function MpesaTransactionsPage() {
                                 tx.status === "COMPLETED" ? "text-emerald-600" : tx.status === "FAILED" ? "text-red-600" : "text-slate-900"
                               }`}
                             >
-                              KSh {tx.amount.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                              {formatKes(tx.amount)}
                             </p>
                             <Badge className={`text-[10px] font-medium px-2 py-0.5 rounded-md w-fit ${getStatusBadge(tx.status)}`}>
                               {tx.status}
@@ -539,18 +600,18 @@ export default function MpesaTransactionsPage() {
                           <TableCell className="py-5 pl-6 border-0 align-top">
                             <div className="space-y-1">
                               <p className="font-mono text-sm font-bold text-slate-900 tracking-wide">
-                                {tx.mpesaReceiptNumber || tx.checkoutRequestId?.slice(-8) || tx.transactionId?.slice(-8) || "—"}
+                                {asText(tx.mpesaReceiptNumber) || tail(tx.checkoutRequestId, 8) || tail(tx.transactionId, 8) || "—"}
                               </p>
                               <p className="text-xs text-slate-500 font-mono">
-                                Ref: {tx.checkoutRequestId?.slice(-8) || tx.transactionId?.slice(-8) || tx.id.slice(-8)} • {tx.transactionType}
+                                Ref: {tail(tx.checkoutRequestId, 8) || tail(tx.transactionId, 8) || tail(tx.id, 8) || "—"} • {asText(tx.transactionType) || "—"}
                               </p>
                               <p className="text-xs text-slate-500">
-                                {tx.accountReference} ({tx.phoneNumber})
+                                {asText(tx.accountReference) || "—"} ({asText(tx.phoneNumber) || "—"})
                               </p>
                             </div>
                           </TableCell>
                           <TableCell className="py-5 border-0 align-top">
-                            {tx.accountReference && tx.accountReference.startsWith("TXN") ? (
+                            {asText(tx.accountReference).startsWith("TXN") ? (
                               <a
                                 href={`/catha/orders?search=${tx.accountReference}`}
                                 onClick={(e) => e.stopPropagation()}
@@ -576,7 +637,7 @@ export default function MpesaTransactionsPage() {
                                     : "text-slate-900"
                               }`}
                             >
-                              KSh {tx.amount.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                              {formatKes(tx.amount)}
                             </span>
                           </TableCell>
                           <TableCell className="py-5 border-0 align-top">
@@ -615,7 +676,7 @@ export default function MpesaTransactionsPage() {
                   <SheetTitle className="text-sm font-medium text-slate-500 uppercase tracking-wider">Transaction Details</SheetTitle>
                   <div className="mt-3 flex items-baseline justify-between gap-4">
                     <p className="font-mono text-2xl font-bold text-slate-900 tracking-tight">
-                      {selectedTx.mpesaReceiptNumber || selectedTx.checkoutRequestId?.slice(-12) || "—"}
+                      {asText(selectedTx.mpesaReceiptNumber) || tail(selectedTx.checkoutRequestId, 12) || "—"}
                     </p>
                     <Badge className={`text-xs font-medium px-3 py-1 rounded-lg shrink-0 ${getStatusBadge(selectedTx.status)}`}>
                       {selectedTx.status}
@@ -629,7 +690,7 @@ export default function MpesaTransactionsPage() {
                     <div>
                       <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Amount</p>
                       <p className={`text-2xl font-bold tabular-nums mt-0.5 ${selectedTx.status === "COMPLETED" ? "text-emerald-600" : selectedTx.status === "FAILED" ? "text-red-600" : "text-slate-900"}`}>
-                        KSh {selectedTx.amount.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                        {formatKes(selectedTx.amount)}
                       </p>
                     </div>
                     <Receipt className="h-10 w-10 text-slate-200" />
@@ -650,7 +711,7 @@ export default function MpesaTransactionsPage() {
                           <p className={`text-xs mt-1 ${selectedTx.linked ? "text-emerald-700" : "text-slate-500"}`}>
                             {formatMpesaLinkedOrdersLine(selectedTx)}
                           </p>
-                          {selectedTx.accountReference?.startsWith("TXN") && (
+                          {asText(selectedTx.accountReference).startsWith("TXN") && (
                             <a
                               href={`/catha/orders?search=${selectedTx.accountReference}`}
                               target="_blank"
@@ -676,7 +737,7 @@ export default function MpesaTransactionsPage() {
                       </div>
                       <div className="px-4 py-3">
                         <span className="text-sm text-slate-500 block mb-1">Reference ID</span>
-                        <p className="font-mono text-xs text-slate-700 break-all leading-relaxed">{selectedTx.checkoutRequestId || selectedTx.transactionId || selectedTx.id}</p>
+                        <p className="font-mono text-xs text-slate-700 break-all leading-relaxed">{asText(selectedTx.checkoutRequestId) || asText(selectedTx.transactionId) || asText(selectedTx.id) || "—"}</p>
                       </div>
                     </div>
                   </div>
