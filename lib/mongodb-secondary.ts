@@ -34,8 +34,8 @@ const secondaryOptions: MongoClientOptions = {
   connectTimeoutMS: 10_000,
   retryWrites: true,
   maxPoolSize: 5,
-  minPoolSize: 1,
-  heartbeatFrequencyMS: 15_000,
+  minPoolSize: 0,
+  heartbeatFrequencyMS: 60_000,
   directConnection: false,
 }
 

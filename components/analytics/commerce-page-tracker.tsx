@@ -6,7 +6,7 @@ import { isStorefrontAnalyticsPath } from '@/lib/commerce-analytics'
 import { trackClientEvent } from '@/lib/commerce-analytics-client'
 
 const SCROLL_MARKS = [25, 50, 75, 100]
-const HEARTBEAT_SECONDS = 15
+const HEARTBEAT_SECONDS = 60
 
 function scrollPercent() {
   const root = document.documentElement

@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth-catha'
 import { normalizePermissions, hasCathaPermission } from '@/lib/catha-permissions-model'
 import { requireActiveShiftForSessionUser } from '@/lib/catha-shift-service'
 import { queueCathaAuditLog } from '@/lib/catha-audit-log'
+import { clearPublicCatalogCache } from '@/lib/catha-public-catalog-cache'
 
 export const runtime = 'nodejs'
 
@@ -83,6 +84,7 @@ export async function POST(request: Request) {
         },
       },
     )
+    clearPublicCatalogCache()
 
     const userName =
       String((session.user as any).name || '').trim() ||

@@ -5,8 +5,8 @@
  * - Full audit logging
  */
 
-import type { Db } from 'mongodb'
-import { ObjectId } from 'mongodb'
+import { ObjectId, type Db } from 'mongodb'
+import { clearPublicCatalogCache } from '@/lib/catha-public-catalog-cache'
 
 /** Product filter: not deleted, type bar */
 const PRODUCT_QUERY = { type: 'bar', deleted: { $ne: true } } as const
@@ -125,6 +125,7 @@ export async function deductStockAtomic(
     reason: inventoryReason,
   })
 
+  clearPublicCatalogCache()
   return { success: true, product: result }
 }
 
@@ -163,6 +164,7 @@ export async function restoreStockAtomic(
   const previousStock = product ? Number(product.stock ?? 0) : 0
 
   await coll.updateOne({ _id: oid }, { $inc: { stock: quantity }, $set: { updatedAt: new Date() } })
+  clearPublicCatalogCache()
 
   const newStock = previousStock + quantity
   await logInventoryAction(db, {

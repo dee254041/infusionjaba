@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -80,20 +80,21 @@ export default function JabaDashboard() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasDataRef = useRef(false)
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      setLoading(true)
-      setError(null)
       const response = await fetch('/api/jaba/dashboard')
       if (!response.ok) {
         throw new Error('Failed to fetch dashboard data')
       }
       const result = await response.json()
+      hasDataRef.current = true
       setData(result)
+      setError(null)
     } catch (err: any) {
       console.error('Error fetching dashboard data:', err)
-      setError(err.message || 'Failed to load dashboard data')
+      if (!hasDataRef.current) setError(err.message || 'Failed to load dashboard data')
     } finally {
       setLoading(false)
     }

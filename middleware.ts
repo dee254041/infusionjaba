@@ -4,6 +4,10 @@ import { getToken } from "next-auth/jwt"
 import { isPublicSiteOnline } from "@/lib/public-site-online"
 import { unreachableResponse } from "@/lib/server-unreachable"
 import { applyControlHeaders } from "@/lib/server-control-guard"
+
+const mwDebug = process.env.MIDDLEWARE_DEBUG === "1"
+
+const STATIC_FILE = /\.(?:png|jpe?g|gif|webp|svg|ico|css|js|map|txt|xml|woff2?)$/i
 // Edge-safe helper: Get app-specific secret from env vars
 function getAppSecret(appName: 'catha' | 'jaba'): string | null {
   const isProduction = process.env.NODE_ENV === 'production' || process.env.NEXTAUTH_URL?.startsWith('https://')
@@ -46,20 +50,21 @@ async function getTokenForApp(request: NextRequest, appName: 'catha' | 'jaba'): 
   // Get app-specific secret
   const secret = getAppSecret(appName)
   if (!secret) {
-    console.log(`[Middleware ${appName}] ❌ No secret available (AUTH_SECRET_${appName.toUpperCase()} or NEXTAUTH_SECRET)`)
+    mwDebug && console["log"](`[Middleware ${appName}] ❌ No secret available (AUTH_SECRET_${appName.toUpperCase()} or NEXTAUTH_SECRET)`)
     return null
   }
 
   const cookieNames = appName === 'catha' ? CATHA_COOKIE_NAMES : JABA_COOKIE_NAMES
-  const allCookies = request.cookies.getAll()
-  const allNames = allCookies.map(c => c.name)
-  console.log(`[Middleware ${appName}] 🔍 All cookies seen: ${allNames.join(', ')}`)
+  if (mwDebug) {
+    const allNames = request.cookies.getAll().map(c => c.name)
+    console["log"](`[Middleware ${appName}] 🔍 All cookies seen: ${allNames.join(', ')}`)
+  }
 
   // Try each cookie name (prod then dev) so localhost and prod both work
   for (const cookieName of cookieNames) {
     const cookieValue = request.cookies.get(cookieName)?.value
     if (!cookieValue) continue
-    console.log(`[Middleware ${appName}] ✅ Found ${cookieName} cookie (length: ${cookieValue.length}), attempting decode...`)
+    mwDebug && console["log"](`[Middleware ${appName}] ✅ Found ${cookieName} cookie (length: ${cookieValue.length}), attempting decode...`)
     try {
       const token = await getToken({
         req: request,
@@ -69,7 +74,7 @@ async function getTokenForApp(request: NextRequest, appName: 'catha' | 'jaba'): 
     
     if (token) {
       // ✅ SAFE TOKEN LOGGING: Confirm token exists and is readable
-      console.log(`[Middleware ${appName}] ✅ Token exists? YES - successfully decoded from cookie`)
+      mwDebug && console["log"](`[Middleware ${appName}] ✅ Token exists? YES - successfully decoded from cookie`)
       
       // CRITICAL: Validate token exists and has required fields
       const tokenApp = (token as any)?.app
@@ -79,56 +84,57 @@ async function getTokenForApp(request: NextRequest, appName: 'catha' | 'jaba'): 
       const tokenId = (token as any)?.id
       const tokenUserCollection = (token as any)?.userCollection
       
-      // ✅ SAFE TOKEN LOGGING: Log non-sensitive token data
-      const tokenData = {
-        id: tokenId?.substring(0, 8) + '...' || 'none',
-        app: tokenApp || 'none',
-        role: tokenRole || 'none',
-        approved: tokenApproved ?? 'none',
-        exp: tokenExp ? new Date(tokenExp * 1000).toISOString() : 'none',
-        userCollection: tokenUserCollection || 'none',
+      if (mwDebug) {
+        const tokenData = {
+          id: tokenId?.substring(0, 8) + '...' || 'none',
+          app: tokenApp || 'none',
+          role: tokenRole || 'none',
+          approved: tokenApproved ?? 'none',
+          exp: tokenExp ? new Date(tokenExp * 1000).toISOString() : 'none',
+          userCollection: tokenUserCollection || 'none',
+        }
+        console["log"](`[Middleware ${appName}] 📋 Token data:`, JSON.stringify(tokenData, null, 2))
       }
-      console.log(`[Middleware ${appName}] 📋 Token data:`, JSON.stringify(tokenData, null, 2))
       
       // CRITICAL: Validate token expiration (only if exp is present)
       // Don't block if exp is missing - NextAuth handles expiration via maxAge
       if (tokenExp !== undefined && tokenExp !== null) {
         const now = Math.floor(Date.now() / 1000)
         if (tokenExp < now) {
-          console.log(`[Middleware ${appName}] ⚠️ Token expired (exp: ${new Date(tokenExp * 1000).toISOString()}, now: ${new Date(now * 1000).toISOString()})`)
+          mwDebug && console["log"](`[Middleware ${appName}] ⚠️ Token expired (exp: ${new Date(tokenExp * 1000).toISOString()}, now: ${new Date(now * 1000).toISOString()})`)
           return null
         }
       } else {
         // exp is missing - log warning in dev, but don't block
         const isProduction = process.env.NODE_ENV === 'production'
         if (!isProduction) {
-          console.log(`[Middleware ${appName}] ⚠️ WARNING: Token exp field is missing - relying on NextAuth maxAge for expiration`)
+          mwDebug && console["log"](`[Middleware ${appName}] ⚠️ WARNING: Token exp field is missing - relying on NextAuth maxAge for expiration`)
         }
       }
       
       // CRITICAL: Validate token.app field (MUST check - primary validation)
       // This ensures the token belongs to the correct app
       if (!tokenApp || tokenApp !== appName) {
-        console.log(`[Middleware ${appName}] ⚠️ Token app (${tokenApp}) doesn't match expected app (${appName})`)
-        console.log(`[Middleware ${appName}] 💡 User is logged into the other app - blocking access`)
+        mwDebug && console["log"](`[Middleware ${appName}] ⚠️ Token app (${tokenApp}) doesn't match expected app (${appName})`)
+        mwDebug && console["log"](`[Middleware ${appName}] 💡 User is logged into the other app - blocking access`)
         return null
       }
       
       // Optional: token.userCollection should match app (catha vs jaba only; no cross-app)
       const expectedCollection = appName === 'catha' ? 'catha' : 'jaba'
       if (tokenUserCollection && tokenUserCollection !== expectedCollection) {
-        console.log(`[Middleware ${appName}] ⚠️ WARNING: Token userCollection (${tokenUserCollection}) doesn't match expected (${expectedCollection})`)
+        mwDebug && console["log"](`[Middleware ${appName}] ⚠️ WARNING: Token userCollection (${tokenUserCollection}) doesn't match expected (${expectedCollection})`)
       }
       
       // Log token data (production-safe: only essential fields, no sensitive data)
       const isProduction = process.env.NODE_ENV === 'production'
       if (isProduction) {
         // Production: Log only essential fields
-        console.log(`[Middleware ${appName}] ✅ Token validated - app: ${tokenApp}, role: ${tokenRole}, approved: ${tokenApproved}, id: ${tokenId?.substring(0, 8)}...`)
+        mwDebug && console["log"](`[Middleware ${appName}] ✅ Token validated - app: ${tokenApp}, role: ${tokenRole}, approved: ${tokenApproved}, id: ${tokenId?.substring(0, 8)}...`)
       } else {
         // Development: Log full token for debugging
-        console.log(`[Middleware ${appName}] ✅ Successfully decoded JWT token from ${cookieName}`)
-        console.log(`[Middleware ${appName}] 📋 TOKEN DATA:`, JSON.stringify({
+        mwDebug && console["log"](`[Middleware ${appName}] ✅ Successfully decoded JWT token from ${cookieName}`)
+        mwDebug && console["log"](`[Middleware ${appName}] 📋 TOKEN DATA:`, JSON.stringify({
           app: tokenApp,
           userCollection: tokenUserCollection,
           role: tokenRole,
@@ -142,26 +148,27 @@ async function getTokenForApp(request: NextRequest, appName: 'catha' | 'jaba'): 
       
       return token
     } else {
-      console.log(`[Middleware ${appName}] ⚠️ getToken returned null for ${cookieName}, trying next cookie name`)
+      mwDebug && console["log"](`[Middleware ${appName}] ⚠️ getToken returned null for ${cookieName}, trying next cookie name`)
     }
     } catch (error: any) {
-      console.log(`[Middleware ${appName}] ❌ getToken error for ${cookieName}: ${error.message}`)
+      mwDebug && console["log"](`[Middleware ${appName}] ❌ getToken error for ${cookieName}: ${error.message}`)
     }
   }
-  console.log(`[Middleware ${appName}] ❌ No valid session cookie found (tried: ${cookieNames.join(', ')})`)
+  mwDebug && console["log"](`[Middleware ${appName}] ❌ No valid session cookie found (tried: ${cookieNames.join(', ')})`)
   return null
 }
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname ?? ''
+  if (STATIC_FILE.test(pathname)) return NextResponse.next()
   const allowOfflineDev = process.env.NODE_ENV !== 'production' && process.env.ALLOW_OFFLINE_DEV === 'true'
-
-  try {
   const controlPath =
     pathname === "/server" ||
     pathname.startsWith("/server/") ||
     pathname === "/api/server" ||
     pathname.startsWith("/api/server/")
+
+  try {
   if (controlPath) {
     return applyControlHeaders(NextResponse.next())
   }
@@ -228,10 +235,10 @@ export async function middleware(request: NextRequest) {
 
     // Check if user has Jaba session cookie
     const hasSessionCookie = hasSession(cookies, 'jaba')
-    console.log(`[Middleware Jaba] Checking ${pathname}, hasSessionCookie: ${hasSessionCookie}`)
+    mwDebug && console["log"](`[Middleware Jaba] Checking ${pathname}, hasSessionCookie: ${hasSessionCookie}`)
     
     if (!hasSessionCookie) {
-      console.log(`[Middleware Jaba] ❌ No session cookie found for ${pathname}, redirecting to login`)
+      mwDebug && console["log"](`[Middleware Jaba] ❌ No session cookie found for ${pathname}, redirecting to login`)
       const url = new URL("/jaba/login", request.url)
       url.searchParams.set("callbackUrl", pathname)
       return NextResponse.redirect(url)
@@ -245,23 +252,22 @@ export async function middleware(request: NextRequest) {
     try {
       // Log environment info for debugging
       const jabaSecret = getAppSecret('jaba')
-      console.log(`[Middleware Jaba] Environment check - isProduction: ${isProduction}, NEXTAUTH_URL: ${process.env.NEXTAUTH_URL?.substring(0, 50)}...`)
-      console.log(`[Middleware Jaba] AUTH_SECRET_JABA present: ${!!process.env.AUTH_SECRET_JABA}, NEXTAUTH_SECRET fallback: ${!!process.env.NEXTAUTH_SECRET}`)
+      mwDebug && console["log"](`[Middleware Jaba] Environment check - isProduction: ${isProduction}, NEXTAUTH_URL: ${process.env.NEXTAUTH_URL?.substring(0, 50)}...`)
+      mwDebug && console["log"](`[Middleware Jaba] AUTH_SECRET_JABA present: ${!!process.env.AUTH_SECRET_JABA}, NEXTAUTH_SECRET fallback: ${!!process.env.NEXTAUTH_SECRET}`)
       
       // Method 1: Get token for Jaba app (uses jaba.session-token cookie with AUTH_SECRET_JABA)
       token = await getTokenForApp(request, 'jaba')
       
       if (token) {
-        console.log(`[Middleware Jaba] ✅ Token retrieved successfully!`)
-        console.log(`[Middleware Jaba] Token details - userCollection: ${token?.userCollection}, role: ${token?.role}, email: ${token?.email}`)
-      } else {
-        // Log available cookies for debugging
+        mwDebug && console["log"](`[Middleware Jaba] ✅ Token retrieved successfully!`)
+        mwDebug && console["log"](`[Middleware Jaba] Token details - userCollection: ${token?.userCollection}, role: ${token?.role}, email: ${token?.email}`)
+      } else if (mwDebug) {
         const allCookies = request.cookies.getAll()
         const cookieNames = allCookies.map(c => c.name)
         const cookieInfo = allCookies.map(c => `${c.name}=${c.value.substring(0, 30)}... (length: ${c.value.length})`)
-        console.log(`[Middleware Jaba] ❌ All getToken attempts failed`)
-        console.log(`[Middleware Jaba] Available cookies (${cookieNames.length}): ${cookieNames.join(', ')}`)
-        console.log(`[Middleware Jaba] Cookie details: ${cookieInfo.join(' | ')}`)
+        console["log"](`[Middleware Jaba] ❌ All getToken attempts failed`)
+        console["log"](`[Middleware Jaba] Available cookies (${cookieNames.length}): ${cookieNames.join(', ')}`)
+        console["log"](`[Middleware Jaba] Cookie details: ${cookieInfo.join(' | ')}`)
       }
     } catch (tokenError: any) {
       console.error(`[Middleware Jaba] ❌ Error getting token: ${tokenError.message}`)
@@ -273,8 +279,8 @@ export async function middleware(request: NextRequest) {
     }
     
     if (!token) {
-      console.log(`[Middleware Jaba] ⚠️ No token found for ${pathname} (session cookie exists but token is null)`)
-      console.log(`[Middleware Jaba] This might be a NextAuth v5 Edge runtime issue. Allowing access if session API confirms authentication.`)
+      mwDebug && console["log"](`[Middleware Jaba] ⚠️ No token found for ${pathname} (session cookie exists but token is null)`)
+      mwDebug && console["log"](`[Middleware Jaba] This might be a NextAuth v5 Edge runtime issue. Allowing access if session API confirms authentication.`)
       // CRITICAL FIX: If getToken fails but session cookie exists, don't redirect immediately
       // Instead, let the client-side session check handle it (login page will redirect if needed)
       // This prevents infinite loops when getToken can't decode the token in Edge runtime
@@ -300,7 +306,7 @@ export async function middleware(request: NextRequest) {
     const email = (token as any)?.email as string | undefined
 
     // Debug logging for production
-    console.log(`[Middleware Jaba] pathname: ${pathname}, role: ${role}, status: ${userStatus}, approved: ${approved}, userCollection: ${userCollection}, email: ${email}`)
+    mwDebug && console["log"](`[Middleware Jaba] pathname: ${pathname}, role: ${role}, status: ${userStatus}, approved: ${approved}, userCollection: ${userCollection}, email: ${email}`)
 
     // ─── SUSPENDED (status inactive): Block everywhere except account-suspended ───
     if (userStatus === 'inactive') {
@@ -310,7 +316,7 @@ export async function middleware(request: NextRequest) {
 
     // Jaba: only Jaba users. Catha users use /catha; no cross-app access.
     if (userCollection !== "jaba") {
-      console.log(`[Middleware Jaba] ❌ BLOCKED: userCollection is "${userCollection}" (expected "jaba"). Redirecting to login.`)
+      mwDebug && console["log"](`[Middleware Jaba] ❌ BLOCKED: userCollection is "${userCollection}" (expected "jaba"). Redirecting to login.`)
       const url = new URL("/jaba/login", request.url)
       url.searchParams.set("callbackUrl", pathname)
       // Clear any session cookies to force re-authentication with correct context
@@ -388,6 +394,14 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next()
   } catch (err: any) {
     console.error('[Middleware] Unhandled error:', err?.message ?? err)
+    if (!controlPath) {
+      try {
+        const online = await isPublicSiteOnline(request.url)
+        if (!online) return unreachableResponse()
+      } catch {
+        /* a failed recheck keeps the previous fallback */
+      }
+    }
     if (pathname.startsWith('/jaba')) return NextResponse.redirect(new URL('/jaba/login', request.url))
     return NextResponse.next()
   }

@@ -3,6 +3,7 @@ import clientPromise from '@/lib/mongodb'
 import { auth } from '@/lib/auth-catha'
 import { normalizePermissions, hasCathaPermission } from '@/lib/catha-permissions-model'
 import { ensureCathaBottledWater } from '@/lib/catha-bottled-water'
+import { clearPublicCatalogCache, readPublicCatalogCache, writePublicCatalogCache } from '@/lib/catha-public-catalog-cache'
 
 export const runtime = 'nodejs'
 
@@ -56,9 +57,6 @@ export async function GET(request: Request) {
   // Public read is allowed; if authenticated, no additional check needed for read inventory list.
 
   try {
-    const client = await clientPromise
-    const db = client.db('infusion_jaba')
-    
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
     const search = searchParams.get('search')
@@ -67,6 +65,28 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '0') // 0 = no limit
     const skip = parseInt(searchParams.get('skip') || '0')
     const aiFilter = searchParams.get('aiFilter') || ''
+    const isPublicCatalog =
+      visibleOnly &&
+      !category &&
+      !search &&
+      stockStatus === 'all' &&
+      !aiFilter &&
+      limit === 0 &&
+      skip === 0
+
+    if (isPublicCatalog) {
+      const cached = readPublicCatalogCache()
+      if (cached) {
+        return NextResponse.json(cached, {
+          headers: {
+            'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=20, max-age=10',
+          },
+        })
+      }
+    }
+
+    const client = await clientPromise
+    const db = client.db('infusion_jaba')
 
     // Keep products visible at stock=0. Only hide archived/deleted items.
     let query: any = { type: 'bar', deleted: { $ne: true }, status: { $ne: 'archived' } }
@@ -243,12 +263,14 @@ export async function GET(request: Request) {
     }
 
     // Set cache headers for browser caching
-    const response = NextResponse.json({
+    const payload = {
       success: true,
       products: transformedProducts,
       ...(limit > 0 && { total: totalCount, limit, skip }),
       ...(aiFilter ? { aiFilterApplied: aiFilter } : {}),
-    })
+    }
+    if (isPublicCatalog) writePublicCatalogCache(payload)
+    const response = NextResponse.json(payload)
 
     if (aiFilter && aiFiltersNeedingOrders.includes(aiFilter)) {
       response.headers.set('Cache-Control', 'private, no-store, max-age=0')
@@ -361,6 +383,7 @@ export async function POST(request: Request) {
 
     // Insert inventory item
     const result = await db.collection('bar_inventory').insertOne(inventoryData)
+    clearPublicCatalogCache()
     
     console.log(`[Bar Inventory API] ✅ Inventory item created successfully: ${name} (ID: ${result.insertedId})`)
 
@@ -502,6 +525,7 @@ export async function PUT(request: Request) {
       { _id: new ObjectId(id) },
       { $set: updateData }
     )
+    clearPublicCatalogCache()
     
     console.log(`[Bar Inventory API] ✅ Inventory item updated successfully: ${name} (ID: ${id})`)
 
@@ -576,6 +600,7 @@ export async function DELETE(request: Request) {
 
     // Delete inventory item
     await db.collection('bar_inventory').deleteOne({ _id: new ObjectId(id) })
+    clearPublicCatalogCache()
     
     console.log(`[Bar Inventory API] ✅ Inventory item deleted successfully: ${existing.name} (ID: ${id})`)
 

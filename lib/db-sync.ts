@@ -95,21 +95,20 @@ interface RetryItem {
 
 const retryQueue: RetryItem[] = []
 
-/** Global slot so HMR in dev doesn't spin up duplicate intervals. */
+/** Global slot so HMR in dev doesn't spin up duplicate timers. */
 const _g = global as typeof globalThis & {
-  _dbSyncRetryInterval?: ReturnType<typeof setInterval>
+  _dbSyncRetryTimer?: ReturnType<typeof setTimeout>
 }
 
-function startRetryProcessor(): void {
-  if (_g._dbSyncRetryInterval) return
-
-  _g._dbSyncRetryInterval = setInterval(() => {
-    void processRetryQueue()
+/** Run only while a retry is waiting. A permanent interval wakes Fluid instances between requests. */
+function scheduleRetryProcessor(): void {
+  if (_g._dbSyncRetryTimer) return
+  _g._dbSyncRetryTimer = setTimeout(() => {
+    _g._dbSyncRetryTimer = undefined
+    void processRetryQueue().finally(() => {
+      if (retryQueue.length > 0) scheduleRetryProcessor()
+    })
   }, RETRY_INTERVAL_MS)
-
-  console.log(
-    '[DB-Sync] 🔄 Secondary sync retry processor started (every 30 s)',
-  )
 }
 
 async function processRetryQueue(): Promise<void> {
@@ -203,6 +202,7 @@ function enqueueRetry(payload: {
     lastAttemptAt: new Date(),
   }
   retryQueue.push(item)
+  scheduleRetryProcessor()
   console.warn(
     `[DB-Sync] ⚠️  Queued for secondary retry — ${payload.method} on` +
       ` ${payload.dbName}.${payload.collectionName}` +
@@ -423,8 +423,6 @@ function createSyncedDb(primaryDb: Db): Db {
  * Called once from lib/mongodb.ts — no other file needs to import this.
  */
 export function wrapClientWithSync(client: MongoClient): MongoClient {
-  startRetryProcessor()
-
   return new Proxy(client, {
     get(target, prop) {
       if (prop === 'db') {

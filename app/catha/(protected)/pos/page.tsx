@@ -1080,6 +1080,9 @@ export default function POSPage() {
     let pollTimeout: NodeJS.Timeout | null = null
     let lastCheckTime = lastWiFiScanCheck
 
+    const nextDelay = () =>
+      typeof document !== "undefined" && document.visibilityState === "hidden" ? 15_000 : 500
+
     const pollWiFiScans = async () => {
       // Don't poll if component unmounted or WiFi scanner disabled
       if (!isPolling || !wifiScannerEnabled) return
@@ -1091,7 +1094,7 @@ export default function POSPage() {
         
         if (!response.ok) {
           // If API fails, increase polling interval to reduce load
-          pollTimeout = setTimeout(pollWiFiScans, 2000)
+          pollTimeout = setTimeout(pollWiFiScans, Math.max(2000, nextDelay()))
           return
         }
 
@@ -1110,24 +1113,32 @@ export default function POSPage() {
           setLastWiFiScanCheck(lastCheckTime)
         }
 
-        // Continue polling - use 500ms for real-time scanning when active
+        // 500ms while this POS tab is open. A hidden tab waits, then catches up on return.
         if (isPolling && wifiScannerEnabled) {
-          pollTimeout = setTimeout(pollWiFiScans, 500)
+          pollTimeout = setTimeout(pollWiFiScans, nextDelay())
         }
       } catch (error) {
         // Silently fail - WiFi scanner might not be configured
         // Increase interval on error to reduce unnecessary requests
         if (isPolling && wifiScannerEnabled) {
-          pollTimeout = setTimeout(pollWiFiScans, 2000)
+          pollTimeout = setTimeout(pollWiFiScans, Math.max(2000, nextDelay()))
         }
       }
     }
 
+    const onVisible = () => {
+      if (!isPolling || document.visibilityState !== "visible") return
+      if (pollTimeout) clearTimeout(pollTimeout)
+      pollTimeout = setTimeout(pollWiFiScans, 400)
+    }
+
     // Start polling
-    pollTimeout = setTimeout(pollWiFiScans, 500)
+    pollTimeout = setTimeout(pollWiFiScans, nextDelay())
+    document.addEventListener("visibilitychange", onVisible)
 
     return () => {
       isPolling = false
+      document.removeEventListener("visibilitychange", onVisible)
       if (pollTimeout) {
         clearTimeout(pollTimeout)
       }

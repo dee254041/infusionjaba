@@ -20,7 +20,7 @@ const EVENT_TYPES: AnalyticsEventType[] = [
 
 export async function POST(request: Request) {
   try {
-    const limited = checkRateLimit(`analytics:${getClientIp(request)}`, 600, 60_000)
+    const limited = checkRateLimit(`analytics:${getClientIp(request)}`, 60, 60_000)
     if (!limited.ok) return NextResponse.json({ ok: true, skipped: 'rate_limit' })
 
     const body = await request.json().catch(() => null)

@@ -178,9 +178,15 @@ export function OrderNotificationsProvider({ children }: { children: React.React
   const [menuPriceById, setMenuPriceById] = useState<Record<string, number>>({})
 
   const isAuthenticated = status === "authenticated" && !!session?.user
-  const isMenuPage = pathname?.startsWith("/menu")
-  const isJabaPage = pathname?.startsWith("/jaba")
-  const shouldShowNotifications = isAuthenticated && !isMenuPage && !isJabaPage
+  const onCathaStaffScreen =
+    !!pathname &&
+    (pathname === "/catha" || pathname.startsWith("/catha/")) &&
+    !pathname.startsWith("/catha/login") &&
+    !pathname.startsWith("/catha/waiting") &&
+    !pathname.startsWith("/catha/access-denied") &&
+    !pathname.startsWith("/catha/disabled") &&
+    !pathname.startsWith("/catha/public")
+  const shouldShowNotifications = isAuthenticated && onCathaStaffScreen
 
   const ackedRef = useRef<Set<string>>(new Set())
   /** Session-only: dismissed without "On it" — don't re-popup every 3s */

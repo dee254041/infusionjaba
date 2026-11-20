@@ -1,6 +1,12 @@
 type OnlineCache = { online: boolean; at: number }
 
-const CACHE_MS = 1000
+/**
+ * One isolate can trust the on/off switch for this long.
+ * Orders, stock, and dashboards do not use this cache.
+ * It only stops every page and API call from launching another function
+ * just to read a flag that almost never changes.
+ */
+const FRESH_MS = 30_000
 
 function cacheBucket(): OnlineCache | undefined {
   return (globalThis as { __publicSiteOnline?: OnlineCache }).__publicSiteOnline
@@ -20,16 +26,16 @@ export function clearPublicSiteOnlineCache() {
 
 export async function isPublicSiteOnline(requestUrl: string): Promise<boolean> {
   const hit = cacheBucket()
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.online
+  if (hit && Date.now() - hit.at < FRESH_MS) return hit.online
   try {
     const url = new URL('/api/server/status', requestUrl)
     const res = await fetch(url, { cache: 'no-store' })
-    if (!res.ok) return hit ? hit.online : true
+    if (!res.ok) return hit?.online === false ? false : true
     const data = (await res.json()) as { online?: boolean }
     const online = data.online !== false
     setCache(online)
     return online
   } catch {
-    return hit ? hit.online : true
+    return hit?.online === false ? false : true
   }
 }

@@ -7,6 +7,8 @@ const DOC_ID = 'public_site'
 const ACCOUNT_LOCK = 'lock:account'
 const LOCK_MS = 15 * 60 * 1000
 const MAX_FAILS = 5
+const PUBLIC_ONLINE_READ_MS = 5_000
+let publicOnlineRead: { online: boolean; at: number } | null = null
 
 export type ControlAuth = {
   online: boolean
@@ -29,7 +31,12 @@ export async function readControlAuth(): Promise<ControlAuth> {
 }
 
 export async function readPublicSiteOnline(): Promise<boolean> {
-  return (await readControlAuth()).online
+  if (publicOnlineRead && Date.now() - publicOnlineRead.at < PUBLIC_ONLINE_READ_MS) {
+    return publicOnlineRead.online
+  }
+  const online = (await readControlAuth()).online
+  publicOnlineRead = { online, at: Date.now() }
+  return online
 }
 
 function lockId(ip: string): string {
@@ -141,4 +148,5 @@ export async function writePublicSiteOnline(online: boolean, email: string): Pro
     { $set: { online, updatedAt: new Date(), updatedBy: email } },
     { upsert: true }
   )
+  publicOnlineRead = { online, at: Date.now() }
 }

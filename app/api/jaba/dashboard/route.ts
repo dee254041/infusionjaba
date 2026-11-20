@@ -9,8 +9,6 @@ export async function GET(request: Request) {
     const client = await clientPromise
     const db = client.db('infusion_jaba')
 
-    console.log('[Dashboard API] Fetching dashboard data...')
-
     // Helper function to normalize date to start of day
     const normalizeDate = (date: Date): Date => {
       const normalized = new Date(date)
@@ -26,29 +24,61 @@ export async function GET(request: Request) {
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
-    // Get all batches
+    // Only the fields the dashboard math and cards use. Full documents
+    // (notes, photos, logs) were being decompressed on every 60s refresh.
     const batches = await db.collection('jaba_batches')
       .find({})
+      .project({
+        date: 1,
+        status: 1,
+        totalLitres: 1,
+        batchClosed: 1,
+        'closure.writtenOffBottles': 1,
+        batchNumber: 1,
+        flavor: 1,
+        bottles250ml: 1,
+        bottles500ml: 1,
+        bottles1L: 1,
+        bottles2L: 1,
+        'ingredients.quantity': 1,
+      })
       .sort({ date: -1, createdAt: -1 })
       .toArray()
 
-    // Get all delivery notes
     const deliveryNotes = await db.collection('jaba_deliveryNotes')
       .find({})
+      .project({
+        status: 1,
+        date: 1,
+        distributorName: 1,
+        batchNumber: 1,
+        driver: 1,
+        'items.batchNumber': 1,
+        'items.productType': 1,
+        'items.quantity': 1,
+        'items.size': 1,
+      })
       .sort({ date: -1, createdAt: -1 })
       .toArray()
 
-    // Get all raw materials
     const rawMaterials = await db.collection('jaba_rawMaterials')
       .find({})
+      .project({
+        name: 1,
+        currentStock: 1,
+        minStock: 1,
+        unit: 1,
+      })
       .toArray()
 
-    // Get all packaging outputs
     const packagingOutputs = await db.collection('jaba_packagingOutput')
       .find({})
+      .project({
+        productKind: 1,
+        'containers.quantity': 1,
+        'containers.size': 1,
+      })
       .toArray()
-
-    console.log(`[Dashboard API] Found ${batches.length} batches, ${deliveryNotes.length} delivery notes, ${rawMaterials.length} raw materials`)
 
     // Calculate dashboard stats
     const totalBatches = batches.length
@@ -315,8 +345,6 @@ export async function GET(request: Request) {
         quantity,
       }
     })
-
-    console.log('[Dashboard API] ✅ Dashboard data prepared successfully')
 
     return NextResponse.json({
       dashboardStats,
