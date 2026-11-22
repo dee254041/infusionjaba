@@ -23,6 +23,10 @@ const options: MongoClientOptions = {
   maxIdleTimeMS: 20000,
   heartbeatFrequencyMS: 60000,
   directConnection: false,
+  // Vercel often cannot complete an IPv6 handshake to Atlas. Trying IPv6 first
+  // burns the whole server-selection window and the page fails.
+  family: 4,
+  autoSelectFamily: false,
 }
 
 const globalForMongo = globalThis as typeof globalThis & {

@@ -169,10 +169,7 @@ async function processRetryQueue(): Promise<void> {
       const message = err instanceof Error ? err.message : String(err)
 
       if (item.attempts < MAX_WRITE_ATTEMPTS) {
-        console.error(
-          `[DB-Sync] ❌ Retry ${item.attempts}/${MAX_WRITE_ATTEMPTS} failed —` +
-            ` ${item.method} on ${item.dbName}.${item.collectionName}: ${message}`,
-        )
+        noteSecondaryFailure(item.method, item.dbName, item.collectionName, message)
         retryQueue.push(item)
       } else {
         console.error(
@@ -184,6 +181,24 @@ async function processRetryQueue(): Promise<void> {
       }
     }
   }
+}
+
+const CONNECTION_FAILURE = /cooldown|secureConnect|Server selection|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|timed out|whitelist/i
+let lastConnectionNoticeAt = 0
+
+function noteSecondaryFailure(method: string, dbName: string, collectionName: string, message: string): void {
+  if (CONNECTION_FAILURE.test(message)) {
+    const now = Date.now()
+    if (now - lastConnectionNoticeAt < 60_000) return
+    lastConnectionNoticeAt = now
+    console.warn(
+      `[DB-Sync] Backup database is unreachable. The live database is unaffected. ${message}`,
+    )
+    return
+  }
+  console.error(
+    `[DB-Sync] Secondary sync failed — ${method} on ${dbName}.${collectionName}: ${message}`,
+  )
 }
 
 function enqueueRetry(payload: {
@@ -367,10 +382,7 @@ function createSyncedCollection<T extends Document = Document>(
             })
             .catch((err: unknown) => {
               const message = err instanceof Error ? err.message : String(err)
-              console.error(
-                `[DB-Sync] ❌ Secondary sync failed — ${prop} on` +
-                  ` ${dbName}.${collectionName}: ${message}`,
-              )
+              noteSecondaryFailure(prop, dbName, collectionName, message)
               enqueueRetry({
                 dbName,
                 collectionName,

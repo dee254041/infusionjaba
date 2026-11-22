@@ -27,16 +27,17 @@ const SECONDARY_URI = process.env.SECONDARY_MONGODB_URI
 const RECONNECT_COOLDOWN_MS = 60_000
 
 const secondaryOptions: MongoClientOptions = {
-  // Keep timeouts shorter than the primary so failures are detected quickly
-  // and the cooldown kicks in fast without blocking the retry queue.
-  serverSelectionTimeoutMS: 10_000,
-  socketTimeoutMS: 20_000,
-  connectTimeoutMS: 10_000,
+  // Fail fast. A dead backup must not sit on a 12s TLS handshake inside a request.
+  serverSelectionTimeoutMS: 4_000,
+  socketTimeoutMS: 8_000,
+  connectTimeoutMS: 4_000,
   retryWrites: true,
   maxPoolSize: 5,
   minPoolSize: 0,
   heartbeatFrequencyMS: 60_000,
   directConnection: false,
+  family: 4,
+  autoSelectFamily: false,
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
