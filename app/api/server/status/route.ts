@@ -1,32 +1,18 @@
 import { NextResponse } from 'next/server'
+import { resolvePublicSiteOnline } from '@/lib/public-site-online'
 import { readPublicSiteOnline } from '@/lib/server-control-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const STICKY_OFFLINE_MS = 2 * 60 * 1000
-let stickyOfflineUntil = 0
-
-function remember(online: boolean) {
-  stickyOfflineUntil = online ? 0 : Date.now() + STICKY_OFFLINE_MS
-}
+const NO_STORE = { 'cache-control': 'no-store' }
 
 export async function GET() {
-  const read = readPublicSiteOnline()
-    .then((online) => {
-      remember(online)
-      return online as boolean | undefined
-    })
-    .catch((error) => {
-      console.error('[server-control] status read failed', error)
-      return undefined
-    })
-
-  const result = await Promise.race([
-    read,
-    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 2000)),
-  ])
-
-  const online = result === false || (result === undefined && Date.now() < stickyOfflineUntil) ? false : result === true
-  return NextResponse.json({ online }, { headers: { 'cache-control': 'no-store' } })
+  try {
+    const online = await readPublicSiteOnline()
+    return NextResponse.json(resolvePublicSiteOnline(online), { headers: NO_STORE })
+  } catch (error) {
+    console.error('[server-control] status read failed', error)
+    return NextResponse.json({ online: true, confirmed: false }, { headers: NO_STORE })
+  }
 }

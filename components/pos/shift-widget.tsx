@@ -47,6 +47,7 @@ type ShiftReminderSettings = {
 export function ShiftWidget({ cashierName }: { cashierName: string }) {
   const router = useRouter()
   const [shift, setShift] = useState<Shift | null>(null)
+  const [shiftKnown, setShiftKnown] = useState(false)
   const [shiftTiming, setShiftTiming] = useState<ShiftTiming | null>(null)
   const [loading, setLoading] = useState(true)
   const [showClockInDialog, setShowClockInDialog] = useState(false)
@@ -78,39 +79,38 @@ export function ShiftWidget({ cashierName }: { cashierName: string }) {
   })
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/catha/shifts/active", { cache: "no-store" })
-    const data = await response.json()
-    setShift(data.shift ?? null)
-    setShiftTiming(data.timing ?? null)
-    if (data?.autoClosedShift?._id) {
-      toast.warning("Shift auto-closed", {
-        description: "Your shift was auto-closed after passing scheduled clock-out by 2 hours.",
-      })
+    try {
+      const response = await fetch("/api/catha/shifts/active", { cache: "no-store" })
+      if (!response.ok) return
+      const data = await response.json()
+      if (!data || data.ok !== true) return
+      setShift(data.shift ?? null)
+      setShiftKnown(true)
+      setShiftTiming(data.timing ?? null)
+      if (data?.autoClosedShift?._id) {
+        toast.warning("Shift auto-closed", {
+          description: "Your shift was auto-closed after passing scheduled clock-out by 2 hours.",
+        })
+      }
+      const prompt = (data?.continuePromptShift ?? null) as ContinuePromptShift | null
+      setContinuePromptShift(prompt)
+      if (
+        !data.shift &&
+        prompt?._id &&
+        prompt._id !== dismissedContinuePromptId
+      ) {
+        setShowContinueDialog(true)
+      }
+      if (data?.shift?.status === "PENDING_CLOSURE") {
+        const started = new Date(data.shift.startedAt)
+        const today = new Date()
+        const yesterdayPending = started.toDateString() !== today.toDateString()
+        if (yesterdayPending) setShowPendingDialog(true)
+      }
+    } finally {
+      setLoading(false)
     }
-    const prompt = (data?.continuePromptShift ?? null) as ContinuePromptShift | null
-    setContinuePromptShift(prompt)
-    if (
-      !data.shift &&
-      prompt?._id &&
-      prompt._id !== dismissedContinuePromptId
-    ) {
-      setShowContinueDialog(true)
-    }
-    if (data?.shift?.status === "PENDING_CLOSURE") {
-      const started = new Date(data.shift.startedAt)
-      const today = new Date()
-      const yesterdayPending = started.toDateString() !== today.toDateString()
-      if (yesterdayPending) setShowPendingDialog(true)
-    }
-    setLoading(false)
   }, [dismissedContinuePromptId])
-
-  const queuePending = useCallback((entry: { endpoint: string; body: Record<string, unknown> }) => {
-    const raw = localStorage.getItem("catha_shift_pending_queue")
-    const list = raw ? (JSON.parse(raw) as Array<{ endpoint: string; body: Record<string, unknown> }>) : []
-    list.push(entry)
-    localStorage.setItem("catha_shift_pending_queue", JSON.stringify(list))
-  }, [])
 
   const flushPending = useCallback(async () => {
     const raw = localStorage.getItem("catha_shift_pending_queue")
@@ -118,6 +118,7 @@ export function ShiftWidget({ cashierName }: { cashierName: string }) {
     const list = JSON.parse(raw) as Array<{ endpoint: string; body: Record<string, unknown> }>
     const remaining: typeof list = []
     for (const item of list) {
+      if (item.endpoint === "/api/catha/shifts/close") continue
       try {
         const res = await fetch(item.endpoint, {
           method: "POST",
@@ -182,7 +183,7 @@ export function ShiftWidget({ cashierName }: { cashierName: string }) {
   }, [])
 
   useEffect(() => {
-    if (loading) return
+    if (loading || !shiftKnown) return
     if (shift) {
       setNoShiftSinceMs(null)
       setNextShiftReminderAtMs(null)
@@ -226,6 +227,7 @@ export function ShiftWidget({ cashierName }: { cashierName: string }) {
     return () => clearInterval(interval)
   }, [
     loading,
+    shiftKnown,
     shift,
     noShiftSinceMs,
     nextShiftReminderAtMs,
@@ -256,10 +258,9 @@ export function ShiftWidget({ cashierName }: { cashierName: string }) {
           notes,
         }),
       })
-      const data = await response.json()
-      if (!response.ok) {
-        queuePending({ endpoint: "/api/catha/shifts/clock-in", body: { openingFloat: Number(openingFloat || 0), notes } })
-        toast.error(data.error || "Failed to start shift")
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.shift) {
+        toast.error(data?.error || "Failed to start shift. Your previous shift was not closed.")
         return
       }
       setShift(data.shift)
@@ -335,10 +336,9 @@ export function ShiftWidget({ cashierName }: { cashierName: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      const data = await response.json()
-      if (!response.ok) {
-        queuePending({ endpoint: "/api/catha/shifts/close", body: payload })
-        toast.error(data.error || "Failed to close shift")
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.ok) {
+        toast.error(data?.error || "Could not close the shift. It is still open.")
         return
       }
       setShift(null)
