@@ -4,6 +4,8 @@ import { getToken } from "next-auth/jwt"
 import { isPublicSiteOnline } from "@/lib/public-site-online"
 import { unreachableResponse } from "@/lib/server-unreachable"
 import { applyControlHeaders } from "@/lib/server-control-guard"
+import { normalizeStationSlug } from "@/lib/station/slug"
+import { stationAuthSecret, stationCookieName, verifyStationToken } from "@/lib/station/token"
 
 const mwDebug = process.env.MIDDLEWARE_DEBUG === "1"
 
@@ -174,6 +176,25 @@ export async function middleware(request: NextRequest) {
   }
   const online = await isPublicSiteOnline(request.url)
   if (!online) return unreachableResponse()
+
+  if (pathname.startsWith("/station/")) {
+    const slug = pathname.split("/")[2] || ""
+    const section = pathname.split("/")[3] || ""
+    const safeSlug = normalizeStationSlug(slug)
+    if (!safeSlug || safeSlug !== slug) {
+      return NextResponse.redirect(new URL("/", request.url))
+    }
+    if (section !== "login") {
+      const token = request.cookies.get(stationCookieName(slug))?.value || ""
+      const session = await verifyStationToken(token, stationAuthSecret())
+      if (!session || session.shopId !== slug) {
+        const url = new URL(`/station/${slug}/login`, request.url)
+        url.searchParams.set("callbackUrl", pathname)
+        return NextResponse.redirect(url)
+      }
+    }
+    return NextResponse.next()
+  }
 
   // ─── Local offline dev bypass for Jaba routes ───
   // Allows UI testing when Mongo/Atlas is unavailable.

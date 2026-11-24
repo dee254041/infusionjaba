@@ -179,6 +179,13 @@ export async function GET(request: Request) {
       }
     }
 
+    // Station tills share this M-Pesa account but their rows carry shopId.
+    // Catha keeps only payments that were not tagged to another shop.
+    query.$and = [
+      ...(Array.isArray(query.$and) ? query.$and : []),
+      { $or: [{ shopId: { $exists: false } }, { shopId: null }, { shopId: '' }, { shopId: 'catha' }] },
+    ]
+
     // Get transactions
     const transactions = await db
       .collection('mpesa_transactions')

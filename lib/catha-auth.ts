@@ -47,7 +47,7 @@ export async function requireCathaNavAccessForRequestPath() {
   const h = await headers()
   const pathname = (h.get('x-catha-pathname') || '').trim() || '/catha'
 
-  if (pathname.startsWith('/catha/ai-intelligence')) {
+  if (pathname.startsWith('/catha/ai-intelligence') || pathname.startsWith('/catha/stations')) {
     const row = await getCathaUserByEmail(session.user!.email!)
     const accessUser: CathaAccessUser = row
       ? { role: row.role, status: row.status, permissions: row.permissions as CathaAccessUser['permissions'] }

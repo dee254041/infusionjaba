@@ -355,7 +355,7 @@ export function Sidebar() {
                         <span className={cn("h-7 w-1 rounded-full bg-transparent transition-colors", isActive ? "bg-sidebar-primary-foreground/80" : "group-hover:bg-sidebar-accent-foreground/40")} />
                         <item.icon className={cn("h-5 w-5 transition-colors", isActive ? "text-indigo-300" : "text-indigo-500 group-hover:text-indigo-400")} />
                         <span className="flex-1">{item.name}</span>
-                        {aiAlertCount > 0 && (
+                        {item.href.includes('ai-intelligence') && aiAlertCount > 0 && (
                           <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white animate-pulse">
                             {aiAlertCount}
                           </span>
@@ -433,7 +433,7 @@ export function Sidebar() {
                           )}>
                           <item.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-primary" : "text-indigo-500 group-hover:text-indigo-400")} />
                           <span className="flex-1 truncate">{item.name}</span>
-                          {aiAlertCount > 0 && (
+                          {item.href.includes('ai-intelligence') && aiAlertCount > 0 && (
                             <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white animate-pulse">
                               {aiAlertCount}
                             </span>

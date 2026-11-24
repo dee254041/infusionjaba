@@ -7,6 +7,8 @@ import { summarizeCathaOrderPayments } from '@/lib/catha-order-payments'
 import { ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION } from '@/lib/ecommerce-checkout-session-constants'
 import { filterInventoryStockLineItems } from '@/lib/catha-order-inventory-lines'
 import { expireCheckoutSessionIfNeeded } from '@/lib/ecommerce-stock-reservation'
+import { isStationOrderId } from '@/lib/station/slug'
+import { startStationStkPush } from '@/lib/station/mpesa'
 
 export async function POST(request: Request) {
   try {
@@ -27,6 +29,15 @@ export async function POST(request: Request) {
 
     // Get M-Pesa settings
     const db = await getDatabase('infusion_jaba')
+
+    if (isStationOrderId(String(accountReference))) {
+      return startStationStkPush(db, {
+        phoneNumber: String(phoneNumber),
+        amount: amountNum,
+        accountReference: String(accountReference),
+        transactionDesc: transactionDesc ? String(transactionDesc) : 'Station payment',
+      })
+    }
 
     // Never trust client-supplied amount — use persisted order total or checkout session snapshot.
     const ref = String(accountReference)
