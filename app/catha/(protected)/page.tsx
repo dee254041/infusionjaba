@@ -6,7 +6,7 @@ export default async function CathaDashboardPage() {
   const session = await getCathaSession()
   const userName = session?.user?.name ?? session?.user?.email ?? 'User'
   const role = String((session?.user as { role?: string } | undefined)?.role || '').toUpperCase()
-  const canSeeStores = role === 'SUPER_ADMIN' || role === 'ADMIN'
+  const canSeeStores = role === 'SUPER_ADMIN'
   return (
     <>
       {canSeeStores ? (

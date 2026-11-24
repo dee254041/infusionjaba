@@ -129,7 +129,7 @@ export default function FinanceDashboardPage() {
         subtitle="Payment recovery, M-Pesa activity, and daily reconciliation"
       />
       <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto w-full">
-        {["SUPER_ADMIN", "ADMIN"].includes(((session?.user as { role?: string } | undefined)?.role || "").toUpperCase()) ? (
+        {((session?.user as { role?: string } | undefined)?.role || "").toUpperCase() === "SUPER_ADMIN" ? (
           <>
             <NetworkOverview title="Every station" />
             <p className="text-sm text-muted-foreground">The reconciliation below is Catha Lounge only.</p>

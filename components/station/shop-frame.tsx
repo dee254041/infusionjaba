@@ -17,10 +17,14 @@ import { NetworkOverview } from '@/components/station/network-overview'
 type Shop = { id: string; name: string }
 type Context = { shop: Shop; shops: Shop[]; role: string }
 
-function screenFor(path: string, shopId: string) {
+const ADMIN_ONLY = ['/catha/expenses', '/catha/clients', '/catha/suppliers', '/catha/users', '/catha/staff']
+
+function screenFor(path: string, shopId: string, role: string) {
+  const adminOnly = ADMIN_ONLY.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+  if (adminOnly && role === 'STAFF') return <Denied />
   if (path.startsWith('/catha/pos')) return <StationPos shopId={shopId} />
   if (path.startsWith('/catha/orders')) return <StationOrders shopId={shopId} />
-  if (path.startsWith('/catha/inventory')) return <StationInventory shopId={shopId} />
+  if (path.startsWith('/catha/inventory') || path.startsWith('/catha/stock-movement')) return <StationInventory shopId={shopId} />
   if (path.startsWith('/catha/qr-tables') || path.startsWith('/catha/tables')) return <StationTables shopId={shopId} />
   if (path.startsWith('/catha/expenses')) return <StationExpenses shopId={shopId} />
   if (path.startsWith('/catha/clients')) return <StationClients shopId={shopId} />
@@ -28,22 +32,33 @@ function screenFor(path: string, shopId: string) {
   if (path.startsWith('/catha/mpesa')) return <StationPayments shopId={shopId} />
   if (path.startsWith('/catha/users')) return <StationStaff shopId={shopId} />
   if (path === '/catha') return <StationHome shopId={shopId} />
-  return null
+  return <Denied />
+}
+
+function Denied() {
+  return (
+    <div className="p-8">
+      <h1 className="text-xl font-semibold">Not available in this shop</h1>
+      <p className="mt-2 text-sm text-muted-foreground">Your assignment does not include this page. Catha data is not shown here.</p>
+    </div>
+  )
 }
 
 export function ShopFrame({ children }: { children: React.ReactNode }) {
   const path = usePathname() || '/catha'
   const router = useRouter()
   const [context, setContext] = useState<Context | null>(null)
+  const [blocked, setBlocked] = useState(false)
 
   const load = () => {
+    setBlocked(false)
     fetch('/api/catha/shop-context', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        if (data?.shop) setContext(data)
-        else setContext({ shop: { id: 'catha', name: 'Catha Lounge' }, shops: [], role: 'STAFF' })
+        if (data?.shop?.id) setContext(data)
+        else setBlocked(true)
       })
-      .catch(() => setContext({ shop: { id: 'catha', name: 'Catha Lounge' }, shops: [], role: 'STAFF' }))
+      .catch(() => setBlocked(true))
   }
 
   useEffect(load, [path])
@@ -59,14 +74,13 @@ export function ShopFrame({ children }: { children: React.ReactNode }) {
     load()
   }
 
-  if (!context) return <div className="p-8 text-sm text-muted-foreground">Loading shop…</div>
+  if (blocked) return <Denied />
+  if (!context) {
+    return <div className="p-8 text-sm text-muted-foreground">Checking which shop you are assigned to…</div>
+  }
 
-  const stationScreen = context.shop.id === 'catha' ? null : screenFor(path, context.shop.id)
-  const showAllStores = context.role === 'SUPER' || context.role === 'ADMIN'
-  const keepCathaPage =
-    path.startsWith('/catha/stations') ||
-    path.startsWith('/catha/ai-intelligence') ||
-    path.startsWith('/catha/finance')
+  const inStation = context.shop.id !== 'catha'
+  const showAllStores = context.role === 'SUPER'
 
   return (
     <div>
@@ -85,16 +99,12 @@ export function ShopFrame({ children }: { children: React.ReactNode }) {
           <span className="text-xs text-muted-foreground">Same /catha pages. The id keeps this shop separate.</span>
         </div>
       ) : null}
-      {context.shop.id !== 'catha' && showAllStores && path === '/catha' ? (
+      {inStation && showAllStores && path === '/catha' ? (
         <div className="px-4 pt-4">
           <NetworkOverview title="All stores" />
         </div>
       ) : null}
-      {stationScreen && !keepCathaPage
-        ? stationScreen
-        : context.shop.id !== 'catha' && !keepCathaPage && context.role === 'STAFF'
-          ? <StationHome shopId={context.shop.id} />
-          : children}
+      {inStation ? screenFor(path, context.shop.id, context.role) : children}
     </div>
   )
 }

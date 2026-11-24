@@ -14,7 +14,7 @@ export async function GET(_request: Request, context: { params: Promise<{ slug: 
 
 export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
   const { slug } = await context.params
-  const [, denied] = await requireStation(slug)
+  const [, denied] = await requireStation(slug, 'ADMIN')
   if (denied) return denied
   const body = await request.json().catch(() => null)
   const db = await stationDb()

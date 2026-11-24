@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { getCathaSession } from '@/lib/catha-auth'
 import { getCathaUserByEmail } from '@/lib/models/catha-user'
+import { decideShopAccess } from '@/lib/station/access'
 import { stationAuthSecret, stationCookieName, verifyStationToken, type StationSession } from '@/lib/station/token'
 
 export async function readStationSession(slug: string): Promise<StationSession | null> {
@@ -13,51 +14,37 @@ export async function readStationSession(slug: string): Promise<StationSession |
   return session
 }
 
-/** Catha super admin and Catha admin can open every station. */
-export async function readCathaStationSession(slug: string): Promise<StationSession | null> {
+/** Only the Catha super admin can open every shop without an assignment. */
+export async function readSuperAdminSession(): Promise<{ name: string } | null> {
   const session = await getCathaSession()
   const email = session?.user?.email
   if (!email) return null
   const user = await getCathaUserByEmail(email)
-  const role = String(user?.role || '').toUpperCase()
-  if (role !== 'SUPER_ADMIN' && role !== 'ADMIN') return null
-  return {
-    shopId: slug,
-    userId: role === 'SUPER_ADMIN' ? 'super' : 'catha-admin',
-    role: role === 'SUPER_ADMIN' ? 'SUPER' : 'ADMIN',
-    name: user?.name || 'Admin',
-    exp: Date.now() + 60_000,
+  if (String(user?.role || '').toUpperCase() !== 'SUPER_ADMIN') return null
+  return { name: user?.name || 'Super admin' }
+}
+
+export async function listStationSessions(): Promise<StationSession[]> {
+  const jar = await cookies()
+  const secret = stationAuthSecret()
+  const sessions: StationSession[] = []
+  for (const cookie of jar.getAll()) {
+    if (!cookie.name.startsWith('station.') || !cookie.name.endsWith('.session')) continue
+    const session = await verifyStationToken(cookie.value, secret)
+    if (session && (session.role === 'ADMIN' || session.role === 'STAFF')) sessions.push(session)
   }
+  return sessions
 }
 
 export async function readAnyStationSession(): Promise<StationSession | null> {
-  const jar = await cookies()
-  const secret = stationAuthSecret()
-  for (const cookie of jar.getAll()) {
-    if (!cookie.name.startsWith('station.') || !cookie.name.endsWith('.session')) continue
-    const session = await verifyStationToken(cookie.value, secret)
-    if (session) return session
-  }
-  return null
-}
-
-/** A station admin can open the other stations. Staff cannot. */
-export async function readAnyStationAdmin(): Promise<StationSession | null> {
-  const jar = await cookies()
-  const secret = stationAuthSecret()
-  for (const cookie of jar.getAll()) {
-    if (!cookie.name.startsWith('station.') || !cookie.name.endsWith('.session')) continue
-    const session = await verifyStationToken(cookie.value, secret)
-    if (session?.role === 'ADMIN') return session
-  }
-  return null
+  const sessions = await listStationSessions()
+  return sessions[0] || null
 }
 
 export const CATHA_SHOP_COOKIE = 'catha_shop_id'
 
 export async function canSeeAllStations(): Promise<boolean> {
-  if (await readCathaStationSession('catha')) return true
-  return Boolean(await readAnyStationAdmin())
+  return Boolean(await readSuperAdminSession())
 }
 
 export async function requireStation(
@@ -65,22 +52,29 @@ export async function requireStation(
   minimum?: 'ADMIN',
 ): Promise<[StationSession, null] | [null, NextResponse]> {
   const own = await readStationSession(slug)
-  const catha = await readCathaStationSession(slug)
-  const visitingAdmin = await readAnyStationAdmin()
-  let session = own
-  if (catha?.role === 'SUPER') session = catha
-  else if (catha?.role === 'ADMIN' || own?.role === 'ADMIN' || visitingAdmin) {
-    session = {
-      ...(own?.role === 'ADMIN' ? own : visitingAdmin || catha)!,
+  const assignment = own?.role === 'ADMIN' || own?.role === 'STAFF' ? own.role : null
+  const decision = decideShopAccess({
+    requestedShopId: slug,
+    isSuper: Boolean(await readSuperAdminSession()),
+    assignment,
+    minimum,
+  })
+  if (!decision.ok) {
+    const status = assignment && minimum === 'ADMIN' ? 403 : 401
+    const error = status === 403 ? 'You do not have permission for that in this shop.' : 'You are not assigned to this shop.'
+    return [null, NextResponse.json({ error }, { status })]
+  }
+  const superAdmin = decision.role === 'SUPER' ? await readSuperAdminSession() : null
+  return [
+    {
       shopId: slug,
-      role: 'ADMIN',
-    }
-  }
-  if (!session) return [null, NextResponse.json({ error: 'Sign in to this shop.' }, { status: 401 })]
-  if (minimum === 'ADMIN' && session.role === 'STAFF') {
-    return [null, NextResponse.json({ error: 'Only an admin can do that.' }, { status: 403 })]
-  }
-  return [session, null]
+      userId: own?.userId || 'super',
+      role: decision.role,
+      name: own?.name || superAdmin?.name || 'Super admin',
+      exp: own?.exp || Date.now() + 60_000,
+    },
+    null,
+  ]
 }
 
 export function stationCookieOptions() {
