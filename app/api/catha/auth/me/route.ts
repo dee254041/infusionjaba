@@ -4,6 +4,8 @@ import { getCathaUserByEmail } from '@/lib/models/catha-user'
 import { buildAllowedRoutes, isSuperAdmin } from '@/lib/catha-access'
 import { autoCloseOverdueShiftForUser, runFirstRequestBacklogSweep } from '@/lib/catha-shift-auto-close'
 import { normalizePermissions } from '@/lib/catha-permissions-model'
+import { resolveShopScope } from '@/lib/shops/context'
+import { effectiveRoleForShop, permissionsForShopRole } from '@/lib/shops/membership'
 
 const CACHE_CONTROL = 'no-store, no-cache, must-revalidate, max-age=0'
 const CASHIER_MY_SHIFT_MIN_PERMS = { view: true, add: false, edit: false, delete: false } as const
@@ -37,9 +39,11 @@ export async function GET() {
       return NextResponse.json({ ok: false, reason: 'deleted' }, { status: 404, headers })
     }
 
-    const role = (user.role ?? 'PENDING').toUpperCase()
+    const scope = await resolveShopScope()
+    const shopId = scope.mode === 'shop' ? scope.shopId : null
+    const role = effectiveRoleForShop(user, shopId)
     const status = (user.status ?? 'PENDING').toUpperCase()
-    const permissions = normalizePermissions(user.permissions ?? {})
+    const permissions = role === 'SUPER_ADMIN' ? normalizePermissions(user.permissions ?? {}) : permissionsForShopRole(role)
     if (role === 'CASHIER' && !hasValidMyShiftViewPermission(permissions.myShift)) {
       permissions.myShift = { ...CASHIER_MY_SHIFT_MIN_PERMS }
     }
@@ -58,6 +62,7 @@ export async function GET() {
           name: user.name,
           role,
           status,
+          shopRole: role === 'CASHIER' ? 'STAFF' : role === 'ADMIN' ? 'ADMIN' : role,
           permissions,
           allowedRoutes,
         },

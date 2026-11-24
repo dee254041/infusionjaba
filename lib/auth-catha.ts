@@ -152,6 +152,9 @@ export const cathaAuth = NextAuth({
             status,
             permissions: [],
             shopIds: [],
+            shopMemberships: [],
+            requestedShopId: 'catha-lounge',
+            approvalState: 'pending',
           })
           await updateCathaUserLastLogin(user.email)
           if (role === 'SUPER_ADMIN') {
@@ -296,17 +299,21 @@ async function getCathaAccessFromDb(email: string): Promise<
   if (!cu) {
     return { ok: false, response: NextResponse.json({ error: 'User not found' }, { status: 404 }) }
   }
-  const role = normalizeCathaRole(cu.role as unknown as string)
   const statusUpper = (String(cu.status ?? 'PENDING')).toUpperCase()
-  const permissions: CathaPermissions = normalizePermissions(cu.permissions)
-
-  if (statusUpper === 'PENDING') {
-    return { ok: false, response: NextResponse.json({ error: 'Account pending approval' }, { status: 403 }) }
-  }
   if (statusUpper === 'DISABLED' || statusUpper === 'SUSPENDED') {
     return { ok: false, response: NextResponse.json({ error: 'Account disabled' }, { status: 403 }) }
   }
-  return { ok: true, role, permissions }
+  const { resolveShopScope } = await import('@/lib/shops/context')
+  const { canOperateInShop, effectiveRoleForShop, permissionsForShopRole } = await import('@/lib/shops/membership')
+  const scope = await resolveShopScope()
+  const shopId = scope.mode === 'shop' ? scope.shopId : null
+  const effective = effectiveRoleForShop(cu, shopId)
+  if (effective !== 'SUPER_ADMIN' && !canOperateInShop(cu, shopId)) {
+    return { ok: false, response: NextResponse.json({ error: 'Account pending approval' }, { status: 403 }) }
+  }
+  const permissions: CathaPermissions =
+    effective === 'SUPER_ADMIN' ? normalizePermissions(cu.permissions) : permissionsForShopRole(effective)
+  return { ok: true, role: effective, permissions }
 }
 
 /**

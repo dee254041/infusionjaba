@@ -19,6 +19,9 @@ export function isSuperAdminRole(role: string | null | undefined): boolean {
  * An explicit empty array means the account has not been assigned to any shop.
  */
 export function userIsStaffOfShop(user: ShopAccessUser, shopId: string): boolean {
+  if (Array.isArray(user.shopMemberships)) {
+    return user.shopMemberships.some((item) => item.shopId === shopId)
+  }
   if (!Array.isArray(user.shopIds)) return shopId === CATHA_LOUNGE_SHOP_ID
   return user.shopIds.includes(shopId)
 }

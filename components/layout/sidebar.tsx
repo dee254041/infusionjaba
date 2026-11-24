@@ -59,6 +59,7 @@ function debouncedPrefetch(apiPath: string) {
 
 function formatSidebarRoleLabel(raw: string | undefined | null): string {
   if (!raw) return "User"
+  if (String(raw).toUpperCase() === "CASHIER") return "Staff"
   const t = String(raw).replace(/_/g, " ").trim()
   if (!t) return "User"
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()

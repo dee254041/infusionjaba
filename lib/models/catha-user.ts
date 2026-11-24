@@ -22,6 +22,9 @@ export interface CathaUser {
   permissions: CathaPermissions
   /** Missing means a pre-multi-shop account assigned only to Catha Lounge. Empty means unassigned. */
   shopIds?: string[]
+  shopMemberships?: { shopId: string; role: 'STAFF' | 'ADMIN' }[]
+  requestedShopId?: string | null
+  approvalState?: 'pending' | 'approved' | 'rejected'
   createdAt: Date
   updatedAt: Date
   lastLogin?: Date
@@ -49,6 +52,17 @@ export async function getCathaUserByEmail(email: string): Promise<CathaUser | nu
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
     shopIds: Array.isArray(doc.shopIds) ? doc.shopIds.map((id: unknown) => String(id)) : undefined,
+    shopMemberships: Array.isArray(doc.shopMemberships)
+      ? doc.shopMemberships
+          .map((item: { shopId?: unknown; role?: unknown }) => ({
+            shopId: String(item?.shopId || ''),
+            role: String(item?.role || '').toUpperCase() === 'ADMIN' ? 'ADMIN' as const : 'STAFF' as const,
+          }))
+          .filter((item: { shopId: string }) => item.shopId)
+      : undefined,
+    requestedShopId: typeof doc.requestedShopId === 'string' ? doc.requestedShopId : null,
+    approvalState:
+      doc.approvalState === 'approved' || doc.approvalState === 'rejected' ? doc.approvalState : 'pending',
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -74,6 +88,17 @@ export async function getCathaUserById(id: string): Promise<CathaUser | null> {
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
     shopIds: Array.isArray(doc.shopIds) ? doc.shopIds.map((id: unknown) => String(id)) : undefined,
+    shopMemberships: Array.isArray(doc.shopMemberships)
+      ? doc.shopMemberships
+          .map((item: { shopId?: unknown; role?: unknown }) => ({
+            shopId: String(item?.shopId || ''),
+            role: String(item?.role || '').toUpperCase() === 'ADMIN' ? 'ADMIN' as const : 'STAFF' as const,
+          }))
+          .filter((item: { shopId: string }) => item.shopId)
+      : undefined,
+    requestedShopId: typeof doc.requestedShopId === 'string' ? doc.requestedShopId : null,
+    approvalState:
+      doc.approvalState === 'approved' || doc.approvalState === 'rejected' ? doc.approvalState : 'pending',
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -93,6 +118,9 @@ export async function createCathaUser(data: {
   status?: CathaUserStatus
   permissions?: CathaPermissions
   shopIds?: string[]
+  shopMemberships?: { shopId: string; role: 'STAFF' | 'ADMIN' }[]
+  requestedShopId?: string | null
+  approvalState?: 'pending' | 'approved' | 'rejected'
 }): Promise<CathaUser> {
   const client = await clientPromise
   const now = new Date()
@@ -106,6 +134,9 @@ export async function createCathaUser(data: {
     status: data.status ?? 'PENDING',
     permissions,
     shopIds: data.shopIds ?? [],
+    shopMemberships: data.shopMemberships ?? [],
+    requestedShopId: data.requestedShopId ?? null,
+    approvalState: data.approvalState ?? 'pending',
     createdAt: now,
     updatedAt: now,
   }
@@ -119,7 +150,7 @@ export async function createCathaUser(data: {
 
 export async function updateCathaUser(
   email: string,
-  updates: Partial<Pick<CathaUser, 'role' | 'status' | 'permissions' | 'name' | 'image' | 'phoneNumber' | 'shopIds'>>
+  updates: Partial<Pick<CathaUser, 'role' | 'status' | 'permissions' | 'name' | 'image' | 'phoneNumber' | 'shopIds' | 'shopMemberships' | 'requestedShopId' | 'approvalState'>>
 ): Promise<CathaUser | null> {
   const client = await clientPromise
   const $set: Record<string, unknown> = { ...updates, updatedAt: new Date() }
@@ -139,6 +170,17 @@ export async function updateCathaUser(
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
     shopIds: Array.isArray(doc.shopIds) ? doc.shopIds.map((id: unknown) => String(id)) : undefined,
+    shopMemberships: Array.isArray(doc.shopMemberships)
+      ? doc.shopMemberships
+          .map((item: { shopId?: unknown; role?: unknown }) => ({
+            shopId: String(item?.shopId || ''),
+            role: String(item?.role || '').toUpperCase() === 'ADMIN' ? 'ADMIN' as const : 'STAFF' as const,
+          }))
+          .filter((item: { shopId: string }) => item.shopId)
+      : undefined,
+    requestedShopId: typeof doc.requestedShopId === 'string' ? doc.requestedShopId : null,
+    approvalState:
+      doc.approvalState === 'approved' || doc.approvalState === 'rejected' ? doc.approvalState : 'pending',
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -167,6 +209,17 @@ export async function getAllCathaUsers(): Promise<CathaUser[]> {
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
     shopIds: Array.isArray(doc.shopIds) ? doc.shopIds.map((id: unknown) => String(id)) : undefined,
+    shopMemberships: Array.isArray(doc.shopMemberships)
+      ? doc.shopMemberships
+          .map((item: { shopId?: unknown; role?: unknown }) => ({
+            shopId: String(item?.shopId || ''),
+            role: String(item?.role || '').toUpperCase() === 'ADMIN' ? 'ADMIN' as const : 'STAFF' as const,
+          }))
+          .filter((item: { shopId: string }) => item.shopId)
+      : undefined,
+    requestedShopId: typeof doc.requestedShopId === 'string' ? doc.requestedShopId : null,
+    approvalState:
+      doc.approvalState === 'approved' || doc.approvalState === 'rejected' ? doc.approvalState : 'pending',
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -258,6 +311,17 @@ export async function getCathaUserByPinLookup(pinLookup: string): Promise<CathaU
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
     shopIds: Array.isArray(doc.shopIds) ? doc.shopIds.map((id: unknown) => String(id)) : undefined,
+    shopMemberships: Array.isArray(doc.shopMemberships)
+      ? doc.shopMemberships
+          .map((item: { shopId?: unknown; role?: unknown }) => ({
+            shopId: String(item?.shopId || ''),
+            role: String(item?.role || '').toUpperCase() === 'ADMIN' ? 'ADMIN' as const : 'STAFF' as const,
+          }))
+          .filter((item: { shopId: string }) => item.shopId)
+      : undefined,
+    requestedShopId: typeof doc.requestedShopId === 'string' ? doc.requestedShopId : null,
+    approvalState:
+      doc.approvalState === 'approved' || doc.approvalState === 'rejected' ? doc.approvalState : 'pending',
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,

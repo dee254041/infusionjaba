@@ -13,6 +13,8 @@ import {
   matchRoutePermission,
   type CathaAccessUser,
 } from '@/lib/catha-access'
+import { canOperateInShop, effectiveRoleForShop, permissionsForShopRole } from '@/lib/shops/membership'
+import { resolveShopScope } from '@/lib/shops/context'
 
 export type CathaSession = Awaited<ReturnType<typeof getCathaSession>>
 
@@ -48,10 +50,17 @@ export async function requireCathaNavAccessForRequestPath() {
   const pathname = (h.get('x-catha-pathname') || '').trim() || '/catha'
 
   if (pathname.startsWith('/catha/ai-intelligence')) {
-    const row = await getCathaUserByEmail(session.user!.email!)
-    const accessUser: CathaAccessUser = row
-      ? { role: row.role, status: row.status, permissions: row.permissions as CathaAccessUser['permissions'] }
-      : { role: 'PENDING' }
+  const row = await getCathaUserByEmail(session.user!.email!)
+  const scope = await resolveShopScope()
+  const shopId = scope.mode === 'shop' ? scope.shopId : null
+  const role = row ? effectiveRoleForShop(row, shopId) : 'PENDING'
+  const accessUser: CathaAccessUser = row
+    ? {
+        role,
+        status: row.status,
+        permissions: (role === 'SUPER_ADMIN' ? row.permissions : permissionsForShopRole(role)) as CathaAccessUser['permissions'],
+      }
+    : { role: 'PENDING' }
     if (!isSuperAdmin(accessUser)) {
       redirect('/catha/access-denied')
     }
@@ -67,10 +76,16 @@ export async function requireCathaNavAccessForRequestPath() {
   if (!row) {
     redirect('/catha/access-denied')
   }
+  const scope = await resolveShopScope()
+  const shopId = scope.mode === 'shop' ? scope.shopId : null
+  if (!canOperateInShop(row, shopId) && effectiveRoleForShop(row, shopId) !== 'SUPER_ADMIN') {
+    redirect('/catha/access-denied')
+  }
+  const role = effectiveRoleForShop(row, shopId)
   const accessUser: CathaAccessUser = {
-    role: row.role,
+    role,
     status: row.status,
-    permissions: row.permissions as CathaAccessUser['permissions'],
+    permissions: (role === 'SUPER_ADMIN' ? row.permissions : permissionsForShopRole(role)) as CathaAccessUser['permissions'],
   }
 
   if (!canView(accessUser, key)) {

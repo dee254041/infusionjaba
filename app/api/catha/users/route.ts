@@ -3,9 +3,11 @@ import { requireSuperAdminApi } from '@/lib/catha-auth'
 import { getAllCathaUsers, getCathaUserByEmail, updateCathaUser, type CathaUserRole, type CathaUserStatus } from '@/lib/models/catha-user'
 import { CathaPermissions, normalizePermissions } from '@/lib/catha-permissions-model'
 import { getPhoneValidationError, normalizeKenyaPhone } from '@/lib/phone-utils'
-import { userVisibleInShopDirectory } from '@/lib/shops/access'
+import { userVisibleInShopDirectory, isSuperAdminRole } from '@/lib/shops/access'
 import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
-import { resolveShopScope } from '@/lib/shops/context'
+import { listShopRecords, resolveShopScope } from '@/lib/shops/context'
+import { canReviewPendingForShop, isUnassignedPending, membershipsOf } from '@/lib/shops/membership'
+import { loadShopApprover } from '@/lib/shops/user-approval'
 
 const VALID_ROLES: CathaUserRole[] = ['SUPER_ADMIN', 'ADMIN', 'CASHIER', 'PENDING']
 const VALID_STATUSES: CathaUserStatus[] = ['ACTIVE', 'PENDING', 'DISABLED']
@@ -21,6 +23,9 @@ function formatUser(u: Awaited<ReturnType<typeof getAllCathaUsers>>[0]) {
     status: u.status,
     permissions: normalizePermissions(u.permissions ?? {}),
     shopIds: u.shopIds ?? null,
+    shopMemberships: u.shopMemberships ?? [],
+    requestedShopId: u.requestedShopId ?? null,
+    approvalState: u.approvalState ?? 'pending',
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
     updatedAt: u.updatedAt instanceof Date ? u.updatedAt.toISOString() : u.updatedAt,
     lastLogin: u.lastLogin ? (u.lastLogin instanceof Date ? u.lastLogin.toISOString() : u.lastLogin) : null,
@@ -28,13 +33,32 @@ function formatUser(u: Awaited<ReturnType<typeof getAllCathaUsers>>[0]) {
 }
 
 export async function GET() {
-  const [session, err] = await requireSuperAdminApi()
-  if (err) return err
+  const loaded = await loadShopApprover()
+  if (!loaded.ok) return loaded.response
+  const { approver } = loaded
   try {
     const scope = await resolveShopScope()
     const shopId = scope.mode === 'shop' ? scope.shopId : CATHA_LOUNGE_SHOP_ID
-    const users = (await getAllCathaUsers()).filter((user) => userVisibleInShopDirectory(user, shopId))
-    return NextResponse.json({ success: true, users: users.map(formatUser) })
+    const all = await getAllCathaUsers()
+    const shops = await listShopRecords()
+    const assignableShops = (approver.superAdmin ? shops : shops.filter((shop) => approver.adminShopIds.includes(shop.shopId)))
+      .filter((shop) => shop.status === 'active')
+      .map((shop) => ({ shopId: shop.shopId, name: shop.name }))
+    const users = all.filter((user) => !isUnassignedPending(user) && userVisibleInShopDirectory(user, shopId))
+    const pending = all.filter((user) => {
+      if (!isUnassignedPending(user) && String(user.status).toUpperCase() !== 'PENDING') return false
+      if (membershipsOf(user).length > 0) return false
+      if (String(user.status).toUpperCase() === 'DISABLED') return false
+      if (isSuperAdminRole(user.role)) return false
+      return canReviewPendingForShop(approver.user, user.requestedShopId || null)
+    })
+    return NextResponse.json({
+      success: true,
+      users: users.map(formatUser),
+      pending: pending.map(formatUser),
+      assignableShops,
+      requestedShopNames: Object.fromEntries(shops.map((shop) => [shop.shopId, shop.name])),
+    })
   } catch (e: any) {
     console.error('[catha/users] GET error:', e?.message)
     return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 })

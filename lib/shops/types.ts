@@ -26,4 +26,5 @@ export type ShopAccessUser = {
   role?: string | null
   status?: string | null
   shopIds?: string[] | null
+  shopMemberships?: { shopId: string; role: string }[] | null
 }

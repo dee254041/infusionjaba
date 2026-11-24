@@ -91,6 +91,9 @@ type CathaUser = {
   createdAt: string
   lastLogin: string | null
   hasPin?: boolean
+  requestedShopId?: string | null
+  approvalState?: 'pending' | 'approved' | 'rejected'
+  shopMemberships?: { shopId: string; role: 'STAFF' | 'ADMIN' }[]
 }
 
 const ROLE_OPTIONS = [
@@ -174,6 +177,11 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
   const [phoneValue, setPhoneValue] = useState('')
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [phoneSubmitting, setPhoneSubmitting] = useState(false)
+  const [assignableShops, setAssignableShops] = useState<{ shopId: string; name: string }[]>([])
+  const [shopNames, setShopNames] = useState<Record<string, string>>({})
+  const [shopRoles, setShopRoles] = useState<Record<string, 'STAFF' | 'ADMIN'>>({})
+
+  const [pendingUsers, setPendingUsers] = useState<CathaUser[]>([])
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -183,16 +191,22 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
         if (!res.ok || !data?.success) {
           throw new Error(data?.error || 'Failed to fetch users')
         }
-        const list: UserRow[] = data.users ?? data?.users ?? []
-        setUsers(
-          list.map((u) => ({
-            ...u,
-            role: (u.role || 'PENDING').toUpperCase() as CathaUserRole,
-            status: (u.status || 'PENDING').toUpperCase() as CathaUserStatus,
-            permissions: normalizePermissions(u.permissions),
-            hasPin: !!(u as any).pinLookup,
-          }))
-        )
+        const list: UserRow[] = data.users ?? []
+        const pendingList: UserRow[] = data.pending ?? list.filter((user) => String(user.status).toUpperCase() === 'PENDING')
+        const mapUser = (u: UserRow) => ({
+          ...u,
+          role: (u.role || 'PENDING').toUpperCase() as CathaUserRole,
+          status: (u.status || 'PENDING').toUpperCase() as CathaUserStatus,
+          permissions: normalizePermissions(u.permissions),
+          hasPin: !!(u as { pinLookup?: string }).pinLookup,
+          requestedShopId: (u as { requestedShopId?: string | null }).requestedShopId ?? null,
+          approvalState: (u as { approvalState?: CathaUser['approvalState'] }).approvalState,
+          shopMemberships: (u as { shopMemberships?: CathaUser['shopMemberships'] }).shopMemberships ?? [],
+        })
+        setUsers(list.map(mapUser))
+        setPendingUsers(pendingList.map(mapUser))
+        setAssignableShops(Array.isArray(data.assignableShops) ? data.assignableShops : [])
+        setShopNames(data.requestedShopNames && typeof data.requestedShopNames === 'object' ? data.requestedShopNames : {})
       } catch (e: any) {
         console.error('Error fetching Catha users:', e)
         toast.error(e?.message || 'Failed to load users')
@@ -202,11 +216,6 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
     }
     fetchUsers()
   }, [])
-
-  const pendingUsers = useMemo(
-    () => users.filter((u) => u.status === 'PENDING'),
-    [users]
-  )
 
   const filteredUsers = useMemo(() => {
     const baseUsers = activeTab === 'pending' ? pendingUsers : users
@@ -253,7 +262,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
       case 'ADMIN':
         return 'Admin'
       case 'CASHIER':
-        return 'Cashier'
+        return 'Staff'
       case 'PENDING':
         return 'Pending'
       default:
@@ -329,9 +338,11 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
 
   const handleApproveUser = (user: CathaUser) => {
     setSelectedUser(user)
-    setSelectedRoleTemplate(null)
-    setShowAdvancedPermissions(false)
-    setEditingPermissions(normalizePermissions(user.permissions))
+    const initial: Record<string, 'STAFF' | 'ADMIN'> = {}
+    if (user.requestedShopId && assignableShops.some((shop) => shop.shopId === user.requestedShopId)) {
+      initial[user.requestedShopId] = 'STAFF'
+    }
+    setShopRoles(initial)
     setIsApproveModalOpen(true)
   }
 
@@ -353,21 +364,55 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
   }
 
   const handleApproveAndSave = async () => {
-    if (!selectedUser || !selectedRoleTemplate) return
+    if (!selectedUser) return
+    const memberships = Object.entries(shopRoles).map(([shopId, role]) => ({ shopId, role }))
+    if (memberships.length === 0) {
+      toast.error('Select at least one shop')
+      return
+    }
     setUpdating(selectedUser.email)
     try {
-      const ok = await patchUser(selectedUser.email, {
-        role: selectedRoleTemplate,
-        status: 'ACTIVE',
-        permissions: editingPermissions,
+      const res = await fetch('/api/catha/users/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: selectedUser.email, decision: 'approve', memberships }),
       })
-      if (!ok) return
-      toast.success('User approved successfully')
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || 'Approval failed')
+        return
+      }
+      toast.success('User approved')
       setIsApproveModalOpen(false)
       setSelectedUser(null)
-      setSelectedRoleTemplate(null)
-    } catch (e) {
-      // errors already toasted
+      setShopRoles({})
+      const refresh = await fetch('/api/catha/users')
+      const refreshed = await refresh.json()
+      if (refresh.ok && refreshed.success) {
+        window.location.reload()
+      }
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const handleRejectUser = async () => {
+    if (!selectedUser) return
+    setUpdating(selectedUser.email)
+    try {
+      const res = await fetch('/api/catha/users/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: selectedUser.email, decision: 'reject' }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        toast.error(data?.error || 'Could not reject this request')
+        return
+      }
+      toast.success('Request rejected. The account stays on the waiting screen.')
+      setIsApproveModalOpen(false)
+      window.location.reload()
     } finally {
       setUpdating(null)
     }
@@ -613,7 +658,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
                 <TabsList className="grid w-full sm:w-auto grid-cols-2">
                   <TabsTrigger value="pending" className="gap-2">
                     <Clock className="h-4 w-4" />
-                    Pending ({stats.pending})
+                    Pending approvals ({stats.pending})
                   </TabsTrigger>
                   <TabsTrigger value="all" className="gap-2">
                     <Users className="h-4 w-4" />
@@ -790,13 +835,25 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               {user.status !== 'ACTIVE' && (
-                                <DropdownMenuItem
-                                  onClick={() => handleStatusChange(user.email, 'ACTIVE')}
-                                >
+                                <DropdownMenuItem onClick={() => handleApproveUser(user)}>
                                   <UserCheck className="h-4 w-4 mr-2" />
-                                  Approve / Activate
+                                  Approve
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedUser(user)
+                                  const initial: Record<string, 'STAFF' | 'ADMIN'> = {}
+                                  for (const membership of user.shopMemberships || []) {
+                                    initial[membership.shopId] = membership.role
+                                  }
+                                  setShopRoles(initial)
+                                  setIsApproveModalOpen(true)
+                                }}
+                              >
+                                <Store className="h-4 w-4 mr-2" />
+                                Edit shop access
+                              </DropdownMenuItem>
                               {user.status !== 'DISABLED' && (
                                 <DropdownMenuItem
                                   onClick={() => handleStatusChange(user.email, 'DISABLED')}
@@ -884,89 +941,67 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
           </DialogHeader>
 
           <div className="space-y-6 py-4">
-            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
-              <p className="text-sm text-emerald-800 dark:text-emerald-300">
-                <Shield className="h-4 w-4 inline mr-2" />
-                Assign a role and permissions for this Catha user before activating their account.
+            {selectedUser?.requestedShopId ? (
+              <p className="text-sm text-muted-foreground">
+                Requested shop: {shopNames[selectedUser.requestedShopId] || selectedUser.requestedShopId}. This is only a request until you approve it.
               </p>
-            </div>
+            ) : null}
+            {selectedUser?.approvalState === 'rejected' ? (
+              <p className="text-sm text-amber-700">This request was rejected. Approving it now will grant the shops you select.</p>
+            ) : null}
             <div>
-              <Label className="text-base font-semibold mb-3 block">Choose Role Template</Label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {(['CASHIER', 'ADMIN', 'SUPER_ADMIN'] as const).map((key) => {
-                  const template = ROLE_META[key]
-                  const Icon = template.icon
-                  const isSelected = selectedRoleTemplate === key
+              <Label className="text-base font-semibold mb-3 block">Shop access</Label>
+              <div className="space-y-3">
+                {assignableShops.map((shop) => {
+                  const selected = shopRoles[shop.shopId]
                   return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => handleRoleTemplateSelect(key)}
-                      className={`p-4 rounded-xl border-2 transition-all text-left ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 shadow-md'
-                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`p-2 rounded-lg ${
-                            isSelected ? 'bg-primary/10' : 'bg-muted'
-                          }`}
+                    <div key={shop.shopId} className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="flex items-center gap-2 text-sm font-medium">
+                        <Checkbox
+                          checked={Boolean(selected)}
+                          onCheckedChange={(checked) => {
+                            setShopRoles((current) => {
+                              const next = { ...current }
+                              if (checked) next[shop.shopId] = next[shop.shopId] || 'STAFF'
+                              else delete next[shop.shopId]
+                              return next
+                            })
+                          }}
+                        />
+                        {shop.name}
+                      </label>
+                      {selected ? (
+                        <Select
+                          value={selected}
+                          onValueChange={(value: 'STAFF' | 'ADMIN') =>
+                            setShopRoles((current) => ({ ...current, [shop.shopId]: value }))
+                          }
                         >
-                          <Icon
-                            className={`h-5 w-5 ${
-                              isSelected ? 'text-primary' : 'text-muted-foreground'
-                            }`}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-foreground">
-                            {template.label}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {template.description}
-                          </p>
-                        </div>
-                        {isSelected && <CheckCircle className="h-5 w-5 text-primary shrink-0" />}
-                      </div>
-                    </button>
+                          <SelectTrigger className="w-full sm:w-40">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="STAFF">Staff</SelectItem>
+                            <SelectItem value="ADMIN">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : null}
+                    </div>
                   )
                 })}
               </div>
             </div>
-
-            {selectedRoleTemplate && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <Label className="text-base font-semibold">Customize Permissions</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowAdvancedPermissions(!showAdvancedPermissions)}
-                    className="h-8 gap-2"
-                  >
-                    {showAdvancedPermissions ? 'Hide' : 'Show'} Permissions
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform ${
-                        showAdvancedPermissions ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </Button>
-                </div>
-                {showAdvancedPermissions && (
-                  <PermissionsList
-                    permissions={editingPermissions}
-                    setPermissions={setEditingPermissions}
-                    isCashierRole={selectedRoleTemplate === 'CASHIER'}
-                  />
-                )}
-              </div>
-            )}
           </div>
 
           <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t mt-4">
+            <Button
+              variant="outline"
+              onClick={handleRejectUser}
+              disabled={updating !== null}
+              className="rounded-xl h-11 w-full sm:w-auto sm:mr-auto"
+            >
+              Reject
+            </Button>
             <Button
               variant="outline"
               onClick={() => setIsApproveModalOpen(false)}
@@ -976,11 +1011,11 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
             </Button>
             <Button
               onClick={handleApproveAndSave}
-              disabled={updating !== null || !selectedRoleTemplate}
+              disabled={updating !== null || Object.keys(shopRoles).length === 0}
               className="rounded-xl h-11 gap-2 w-full sm:w-auto"
             >
               {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              Approve & Save Permissions
+              Approve
             </Button>
           </div>
         </DialogContent>
@@ -1218,6 +1253,9 @@ function UserCardMobile({
         </Avatar>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm text-foreground truncate">{user.name}</p>
+          {user.status === 'PENDING' && user.requestedShopId ? (
+            <p className="text-xs text-muted-foreground truncate">Requested shop: {user.requestedShopId === 'catha-lounge' ? 'Catha Lounge' : user.requestedShopId}</p>
+          ) : null}
         </div>
         <Badge
           className={`text-[10px] rounded-lg border shrink-0 ${getStatusBadgeClass(
