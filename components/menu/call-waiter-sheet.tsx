@@ -33,7 +33,6 @@ import {
 } from "@/lib/waiter-call"
 import { useAdaptivePoll } from "@/hooks/use-adaptive-poll"
 import { toast } from "sonner"
-import { withMenuShop } from "@/lib/shops/menu-shop"
 import styles from "./call-waiter-sheet.module.css"
 
 const REASON_ICONS: Record<
