@@ -313,7 +313,7 @@ export async function GET(request: Request) {
     
     const res = NextResponse.json(formattedOrders)
     // Orders state: short TTL - 3s cache, 5s SWR (near real-time for POS)
-    res.headers.set('Cache-Control', 'public, s-maxage=3, stale-while-revalidate=5, max-age=3')
+    res.headers.set('Cache-Control', 'private, no-store')
     return res
   } catch (error: any) {
     console.error('Error fetching orders:', error)

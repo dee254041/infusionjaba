@@ -13,6 +13,7 @@ import {
   sanitizeMpesaSettingsForClient,
   sanitizeNotificationsForClient,
 } from '@/lib/catha-mpesa-integration-security'
+import { readSharedMpesaConfig, writeSharedMpesaConfig } from '@/lib/shops/mpesa-config'
 
 const MASKED_SECRET = '********'
 
@@ -212,8 +213,9 @@ export async function GET() {
       }
     }
     
+    const sharedMpesa = (await readSharedMpesaConfig(db)) || settings.mpesa || {}
     const receiptTillNumber = String(
-      settings.receipt?.tillNumber || settings.mpesa?.shortcode || ""
+      settings.receipt?.tillNumber || (sharedMpesa as { shortcode?: string }).shortcode || ""
     ).trim()
 
     // Merge with defaults to ensure all fields exist
@@ -232,7 +234,7 @@ export async function GET() {
       etims: { ...defaultSettings.etims, ...(settings.etims || {}) },
       mpesa: sanitizeMpesaSettingsForClient({
         ...defaultSettings.mpesa,
-        ...(settings.mpesa || {}),
+        ...sharedMpesa,
       }),
       delivery: { ...defaultSettings.delivery, ...(settings.delivery || {}) },
       ecommerceOpeningHours: {
@@ -336,7 +338,8 @@ export async function PUT(request: Request) {
       const mpesaCheck = await requireMpesaEditSession(request, session.user.email)
       if ('response' in mpesaCheck) return mpesaCheck.response
 
-      const existingMpesa = existing?.mpesa ?? defaultSettings.mpesa!
+      const sharedExisting = (await readSharedMpesaConfig(db)) || {}
+      const existingMpesa = { ...defaultSettings.mpesa!, ...sharedExisting }
       const incoming = body.mpesa as Record<string, unknown>
       const mergedMpesa = { ...existingMpesa, ...incoming }
 
@@ -356,7 +359,7 @@ export async function PUT(request: Request) {
         mergedMpesa.shortcode = existingMpesa.shortcode
       }
 
-      updateData.mpesa = mergedMpesa
+      await writeSharedMpesaConfig(db, mergedMpesa)
     }
     if (body.delivery !== undefined) {
       updateData.delivery = body.delivery

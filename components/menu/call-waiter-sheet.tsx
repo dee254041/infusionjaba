@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { withMenuShop } from "@/lib/shops/menu-shop"
 import {
   WAITER_CALL_REASONS,
   WAITER_CALL_SHEET_AUTO_DISMISS_MS,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/waiter-call"
 import { useAdaptivePoll } from "@/hooks/use-adaptive-poll"
 import { toast } from "sonner"
+import { withMenuShop } from "@/lib/shops/menu-shop"
 import styles from "./call-waiter-sheet.module.css"
 
 const REASON_ICONS: Record<
@@ -121,7 +123,7 @@ export function CallWaiterSheet({
   const pollStaffAck = useCallback(async () => {
     if (phase !== "confirmed" || !callId || !open || staffOnWay) return
     try {
-      const res = await fetch(`/api/waiter-calls?callId=${encodeURIComponent(callId)}`, {
+      const res = await fetch(withMenuShop(`/api/waiter-calls?callId=${encodeURIComponent(callId)}`), {
         cache: "no-store",
       })
       if (!res.ok) return
@@ -171,7 +173,7 @@ export function CallWaiterSheet({
     const createdAt = Date.now()
 
     try {
-      const res = await fetch("/api/waiter-calls", {
+      const res = await fetch(withMenuShop("/api/waiter-calls"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -223,7 +225,7 @@ export function CallWaiterSheet({
     clearPendingWaiterCall()
     if (callId) {
       try {
-        await fetch("/api/waiter-calls", {
+        await fetch(withMenuShop("/api/waiter-calls"), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ callId, status: "cancelled" }),

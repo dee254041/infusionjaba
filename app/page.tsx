@@ -86,7 +86,7 @@ export default function HomePage() {
     const fetchProducts = async () => {
       try {
         setLoading(true)
-        const response = await fetch("/api/catha/inventory?visibleOnly=true")
+        const response = await fetch("/api/catha/inventory?visibleOnly=true&shop=catha-lounge")
         if (!response.ok) {
           applyFallbackData()
           return

@@ -5,6 +5,9 @@ import {
   approveManualMpesaVerification,
   rejectManualMpesaVerification,
 } from '@/lib/catha-manual-mpesa-verification'
+import { runWithShop, runWithoutShopScope } from '@/lib/shops/als'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
+import { assertActorCanAccessShop } from '@/lib/shops/context'
 
 export const MANUAL_MPESA_APPROVAL_TOKENS = 'catha_manual_mpesa_approval_tokens'
 
@@ -91,12 +94,20 @@ export async function getApprovalTokenPreview(
   const raw = String(token || '').trim()
   if (!raw) return { ok: false, error: 'Invalid link', status: 400 }
 
-  const row = await db.collection(MANUAL_MPESA_APPROVAL_TOKENS).findOne({ token: raw })
-  if (!row) return { ok: false, error: 'This approval link is invalid.', status: 404 }
-
-  const verification = await db.collection('catha_manual_mpesa_verifications').findOne({
-    id: row.verificationId,
+  const located = await runWithoutShopScope(async () => {
+    const row = await db.collection(MANUAL_MPESA_APPROVAL_TOKENS).findOne({ token: raw })
+    if (!row) return null
+    const verification = await db.collection('catha_manual_mpesa_verifications').findOne({
+      id: row.verificationId,
+    })
+    return { row, verification }
   })
+  if (!located?.row) return { ok: false, error: 'This approval link is invalid.', status: 404 }
+  const shopId = String(located.verification?.shopId || located.row.shopId || CATHA_LOUNGE_SHOP_ID)
+  const access = await assertActorCanAccessShop(shopId)
+  if (!access.ok) return { ok: false, error: access.error, status: access.status }
+  const row = located.row
+  const verification = located.verification
   if (!verification) {
     return { ok: false, error: 'The related verification request was not found.', status: 404 }
   }
@@ -134,8 +145,28 @@ export async function consumeManualMpesaApprovalToken(
   const raw = String(token || '').trim()
   if (!raw) return { ok: false, error: 'Invalid link', status: 400 }
 
+  const located = await runWithoutShopScope(async () => {
+    const tokenRow = await db.collection(MANUAL_MPESA_APPROVAL_TOKENS).findOne({ token: raw })
+    if (!tokenRow) return null
+    const verification = await db.collection('catha_manual_mpesa_verifications').findOne({
+      id: tokenRow.verificationId,
+    })
+    return { tokenRow, verification }
+  })
+  if (!located?.tokenRow) {
+    return {
+      ok: false,
+      error: 'This approval link has expired, already been used, or is invalid.',
+      status: 410,
+    }
+  }
+  const shopId = String(located.verification?.shopId || located.tokenRow.shopId || CATHA_LOUNGE_SHOP_ID)
+  const access = await assertActorCanAccessShop(shopId)
+  if (!access.ok) return { ok: false, error: access.error, status: access.status }
+
   const now = new Date()
-  const row = await db.collection<ManualMpesaApprovalTokenDoc>(MANUAL_MPESA_APPROVAL_TOKENS).findOneAndUpdate(
+  const row = await runWithoutShopScope(() =>
+    db.collection<ManualMpesaApprovalTokenDoc>(MANUAL_MPESA_APPROVAL_TOKENS).findOneAndUpdate(
     {
       token: raw,
       usedAt: null,
@@ -145,10 +176,24 @@ export async function consumeManualMpesaApprovalToken(
       $set: {
         usedAt: now,
         usedAction: action,
+        shopId,
       },
     },
     { returnDocument: 'after' }
   )
+  )
+
+  return runWithShop(shopId, async () => consumeResolvedToken(db, raw, action, rejectionReason, reviewer, row))
+}
+
+async function consumeResolvedToken(
+  db: Db,
+  raw: string,
+  action: 'approve' | 'reject',
+  rejectionReason: string | null | undefined,
+  reviewer: { name: string; userId?: string | null } | undefined,
+  row: ManualMpesaApprovalTokenDoc | null
+): Promise<ConsumeApprovalTokenResult> {
 
   const doc = row as ManualMpesaApprovalTokenDoc | null
   if (!doc?.verificationId) {

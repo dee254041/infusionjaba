@@ -4,6 +4,7 @@ import {
   createDistributorRequest,
 } from '@/lib/models/distributor-request'
 import { requireJabaRolesFromDb } from '@/lib/api-jaba-permissions'
+import { globalDistributorOwnership } from '@/lib/shops/filter'
 
 export async function GET() {
   try {
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       submittedAt: new Date(),
       notes,
       requestType: 'jaba_distributor',
+      ...globalDistributorOwnership(),
     })
     return NextResponse.json({
       success: true,

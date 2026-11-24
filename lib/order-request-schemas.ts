@@ -159,6 +159,7 @@ export const menuOrderCreateSchema = z
     items: z.array(minimalInventoryLineSchema).min(1).max(200),
     receivedBy: z.union([z.string().max(200), z.null()]).optional(),
     cancelledReason: z.union([z.string().max(500), z.null()]).optional(),
+    shop: z.string().max(40).optional(),
   })
   .strict()
 
@@ -174,6 +175,7 @@ export const menuOrderPutSchema = z
     receivedBy: z.union([z.string().max(200), z.null()]).optional(),
     servedAt: z.union([z.string().max(80), z.date(), z.null()]).optional(),
     servedBy: z.union([z.string().max(200), z.null()]).optional(),
+    shop: z.string().max(40).optional(),
   })
   .strict()
 

@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/input-otp"
 import { normalizePhoneNumbers } from "@/lib/phone-normalize"
 import Link from "next/link"
+import { ShopAssignmentCard } from "@/components/catha/shop-switcher"
 
 const EO_DAY_DEFS: { value: number; label: string }[] = [
   { value: 1, label: "Mon" },
@@ -1541,6 +1542,7 @@ export default function SettingsPage() {
     <>
         <Header title="Settings" subtitle="Manage your POS system" />
         <div className="p-6">
+          <ShopAssignmentCard />
           <div className="mb-4">
             <div className="flex flex-wrap items-center gap-2">
               <Button asChild variant="outline" size="sm">

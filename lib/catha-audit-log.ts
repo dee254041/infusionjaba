@@ -1,4 +1,5 @@
 import clientPromise from '@/lib/mongodb'
+import { readShopStore, runWithoutShopScope } from '@/lib/shops/als'
 import { sendJabaSmsStrict, normalizePhoneNumbers } from '@/lib/jaba-sms'
 import type { Db } from 'mongodb'
 
@@ -105,6 +106,9 @@ export function queueCathaAuditLog(input: CathaAuditLogInput): void {
 }
 
 export async function runAuditRetentionSweep(options?: { db?: Db; force?: boolean }) {
+  if (!readShopStore()?.bypass) {
+    return runWithoutShopScope(() => runAuditRetentionSweep(options))
+  }
   const db = options?.db ?? (await clientPromise).db(DB_NAME)
   const force = options?.force === true
   const now = new Date()

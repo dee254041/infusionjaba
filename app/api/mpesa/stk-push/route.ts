@@ -7,8 +7,12 @@ import { summarizeCathaOrderPayments } from '@/lib/catha-order-payments'
 import { ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION } from '@/lib/ecommerce-checkout-session-constants'
 import { filterInventoryStockLineItems } from '@/lib/catha-order-inventory-lines'
 import { expireCheckoutSessionIfNeeded } from '@/lib/ecommerce-stock-reservation'
-import { isStationOrderId } from '@/lib/station/slug'
-import { startStationStkPush } from '@/lib/station/mpesa'
+import { readSharedMpesaConfig } from '@/lib/shops/mpesa-config'
+import { bindShopBypass, readShopStore, runWithoutShopScope } from '@/lib/shops/als'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
+import { ShopScopeError } from '@/lib/shops/access'
+import { bindPublicShopFromRequest } from '@/lib/shops/context'
+import { createPublicPaymentToken } from '@/lib/shops/payment-status'
 
 export async function POST(request: Request) {
   try {
@@ -27,21 +31,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Invalid payment amount' }, { status: 400 })
     }
 
+    const explicitShop = String(body.shop || new URL(request.url).searchParams.get('shop') || '').trim().toLowerCase()
+    if (explicitShop) {
+      try {
+        await bindPublicShopFromRequest(request, explicitShop)
+      } catch (error) {
+        if (error instanceof ShopScopeError) {
+          return NextResponse.json({ success: false, error: error.message }, { status: error.status })
+        }
+        throw error
+      }
+    }
+
     // Get M-Pesa settings
     const db = await getDatabase('infusion_jaba')
 
-    if (isStationOrderId(String(accountReference))) {
-      return startStationStkPush(db, {
-        phoneNumber: String(phoneNumber),
-        amount: amountNum,
-        accountReference: String(accountReference),
-        transactionDesc: transactionDesc ? String(transactionDesc) : 'Station payment',
-      })
-    }
-
     // Never trust client-supplied amount — use persisted order total or checkout session snapshot.
     const ref = String(accountReference)
-    const orderForRef = await db.collection('orders').findOne({ id: ref })
+    let orderForRef = await db.collection('orders').findOne({ id: ref })
+    if (!orderForRef && !explicitShop) {
+      const ecommerceOrder = await runWithoutShopScope(() =>
+        db.collection('orders').findOne({ id: ref, type: 'ecommerce' })
+      )
+      if (ecommerceOrder) {
+        bindShopBypass()
+        orderForRef = ecommerceOrder
+      }
+    }
     let checkoutSession = orderForRef
       ? null
       : await db.collection(ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION).findOne({ id: ref })
@@ -130,7 +146,16 @@ export async function POST(request: Request) {
       }
     }
     await ensureMpesaTransactionIndexes(db)
-    const settings = await db.collection('catha_settings').findOne({})
+    const mpesa = (await readSharedMpesaConfig(db)) as {
+      enabled?: boolean
+      consumerKey: string
+      consumerSecret: string
+      passkey: string
+      shortcode: string
+      environment: 'sandbox' | 'production'
+      callbackUrl: string
+    } | null
+    const settings = { mpesa }
 
     if (!settings?.mpesa?.enabled) {
       return NextResponse.json(
@@ -157,6 +182,14 @@ export async function POST(request: Request) {
     })
 
     if (recentPending?.checkout_request_id) {
+      let publicStatusToken = recentPending.public_status_token ? String(recentPending.public_status_token) : ''
+      if (!publicStatusToken) {
+        publicStatusToken = createPublicPaymentToken()
+        await db.collection('mpesa_transactions').updateOne(
+          { _id: recentPending._id },
+          { $set: { public_status_token: publicStatusToken, updatedAt: new Date() } }
+        )
+      }
       console.log('[M-Pesa STK] Duplicate prompt blocked — returning existing PENDING checkout', {
         accountReference,
         checkoutRequestID: recentPending.checkout_request_id,
@@ -164,11 +197,12 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         duplicate: true,
-        data: {
-          checkoutRequestID: recentPending.checkout_request_id,
-          merchantRequestID: recentPending.merchant_request_id ?? null,
-          customerMessage: recentPending.result_desc || 'An STK push is already in progress for this order.',
-        },
+          data: {
+            checkoutRequestID: recentPending.checkout_request_id,
+            merchantRequestID: recentPending.merchant_request_id ?? null,
+            publicStatusToken,
+            customerMessage: recentPending.result_desc || 'An STK push is already in progress for this order.',
+          },
       })
     }
 
@@ -188,6 +222,12 @@ export async function POST(request: Request) {
     })
 
     // Store transaction in database
+    const boundShopId = readShopStore()?.shopId || null
+    const ecommerceWithoutShop = !explicitShop && (orderForRef?.type === 'ecommerce' || Boolean(checkoutSession))
+    const transactionShopId = ecommerceWithoutShop
+      ? null
+      : boundShopId || (orderForRef ? String(orderForRef.shopId || CATHA_LOUNGE_SHOP_ID) : null)
+    const publicStatusToken = createPublicPaymentToken()
     const transaction = {
       transaction_type: 'STK',
       checkout_request_id: stkResponse.CheckoutRequestID,
@@ -195,6 +235,9 @@ export async function POST(request: Request) {
       amount: finalAmount,
       phone_number: phoneNumber,
       account_reference: accountReference,
+      order_id: ref,
+      public_status_token: publicStatusToken,
+      ...(transactionShopId ? { shopId: transactionShopId } : { channel: 'ecommerce' }),
       status: 'PENDING',
       response_code: stkResponse.ResponseCode,
       result_desc: stkResponse.ResponseDescription,
@@ -222,6 +265,7 @@ export async function POST(request: Request) {
             data: {
               checkoutRequestID: existing.checkout_request_id,
               merchantRequestID: existing.merchant_request_id ?? null,
+              publicStatusToken: existing.public_status_token ?? null,
               customerMessage: existing.result_desc || 'Existing checkout request.',
             },
           })
@@ -237,6 +281,7 @@ export async function POST(request: Request) {
       data: {
         checkoutRequestID: stkResponse.CheckoutRequestID,
         merchantRequestID: stkResponse.MerchantRequestID,
+        publicStatusToken,
         customerMessage: stkResponse.CustomerMessage,
       },
     })

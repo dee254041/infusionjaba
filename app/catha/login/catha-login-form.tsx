@@ -112,7 +112,7 @@ export function CathaLoginForm({ callbackUrl, error }: { callbackUrl: string; er
             Sign in with Google
           </button>
           <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-            Use your Google account. A super admin then assigns your shop on Users.
+            Use your Google account for full admin and staff access.
           </p>
         </TabsContent>
 

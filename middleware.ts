@@ -4,7 +4,6 @@ import { getToken } from "next-auth/jwt"
 import { isPublicSiteOnline } from "@/lib/public-site-online"
 import { unreachableResponse } from "@/lib/server-unreachable"
 import { applyControlHeaders } from "@/lib/server-control-guard"
-import { stationAuthSecret, verifyStationToken } from "@/lib/station/token"
 
 const mwDebug = process.env.MIDDLEWARE_DEBUG === "1"
 
@@ -159,9 +158,22 @@ async function getTokenForApp(request: NextRequest, appName: 'catha' | 'jaba'): 
   return null
 }
 
+function nextWithShopHints(request: NextRequest, requestHeaders?: Headers) {
+  const headers = requestHeaders ?? new Headers(request.headers)
+  headers.set('x-request-path', request.nextUrl.pathname)
+  headers.set('x-request-method', request.method)
+  const shop = request.nextUrl.searchParams.get('shop')?.trim().toLowerCase() || ''
+  if (shop) headers.set('x-shop-query', shop.slice(0, 64))
+  if (request.nextUrl.searchParams.get('visibleOnly') === 'true') {
+    headers.set('x-public-catalog', '1')
+  }
+  return NextResponse.next({ request: { headers } })
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname ?? ''
   if (STATIC_FILE.test(pathname)) return NextResponse.next()
+  if (pathname.startsWith('/api/')) return nextWithShopHints(request)
   const allowOfflineDev = process.env.NODE_ENV !== 'production' && process.env.ALLOW_OFFLINE_DEV === 'true'
   const controlPath =
     pathname === "/server" ||
@@ -176,20 +188,6 @@ export async function middleware(request: NextRequest) {
   const online = await isPublicSiteOnline(request.url)
   if (!online) return unreachableResponse()
 
-  if (pathname === "/station" || pathname.startsWith("/station/")) {
-    return NextResponse.redirect(new URL("/catha", request.url))
-  }
-  if (pathname.startsWith("/menu/") && !pathname.startsWith("/menu/table")) {
-    const shopId = pathname.split("/")[2] || ""
-    if (shopId && !shopId.includes(".")) {
-      const url = new URL("/catha/menu", request.url)
-      url.searchParams.set("id", shopId)
-      const table = request.nextUrl.searchParams.get("t")
-      if (table) url.searchParams.set("t", table)
-      return NextResponse.redirect(url)
-    }
-  }
-
   // ─── Local offline dev bypass for Jaba routes ───
   // Allows UI testing when Mongo/Atlas is unavailable.
   if (allowOfflineDev && (pathname === "/jaba" || pathname.startsWith("/jaba/")) && !pathname.startsWith("/api")) {
@@ -200,19 +198,11 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/catha") && !pathname.startsWith("/api")) {
     const allowed =
       pathname === "/catha/login" ||
-      pathname === "/catha/menu" ||
-      pathname.startsWith("/catha/menu/") ||
       pathname === "/catha/waiting" ||
       pathname === "/catha/access-denied" ||
       pathname === "/catha/disabled" ||
       pathname.startsWith("/catha/public/")
     if (allowed) return NextResponse.next()
-    const stationSecret = stationAuthSecret()
-    for (const cookie of request.cookies.getAll()) {
-      if (!cookie.name.startsWith("station.") || !cookie.name.endsWith(".session")) continue
-      const stationSession = await verifyStationToken(cookie.value, stationSecret)
-      if (stationSession) return NextResponse.next()
-    }
     const hasCathaSession = hasSession(request.cookies, 'catha')
     if (!hasCathaSession) {
       const url = new URL("/catha/login", request.url)
@@ -239,9 +229,7 @@ export async function middleware(request: NextRequest) {
     }
     const requestHeaders = new Headers(request.headers)
     requestHeaders.set('x-catha-pathname', pathname)
-    return NextResponse.next({
-      request: { headers: requestHeaders },
-    })
+    return nextWithShopHints(request, requestHeaders)
   }
 
   // ─── Protect /jaba routes ───
@@ -414,7 +402,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`/catha${pathname}`, request.url))
   }
 
-  return NextResponse.next()
+  return nextWithShopHints(request)
   } catch (err: any) {
     console.error('[Middleware] Unhandled error:', err?.message ?? err)
     if (!controlPath) {
@@ -438,6 +426,6 @@ export const config = {
      * on every order/stock poll was a large share of Edge CPU. A new visit still
      * cannot load the site while it is off. Static files never start this function.
      */
-    "/((?!api(?:/|$)|_next/static|_next/image|favicon.ico|icon.png|.*\\.(?:png|jpe?g|gif|webp|svg|ico|css|js|map|txt|xml|woff2?)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|.*\\.(?:png|jpe?g|gif|webp|svg|ico|css|js|map|txt|xml|woff2?)$).*)",
   ],
 }

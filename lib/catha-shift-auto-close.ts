@@ -9,6 +9,8 @@ import {
 } from '@/lib/models/staff-shift'
 import { isOverdueForAutoClose } from '@/lib/catha-shift-auto-close-utils'
 import { closeShiftAndNotify } from '@/lib/catha-shift-lifecycle'
+import { runWithShop, runWithoutShopScope } from '@/lib/shops/als'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
 
 type AutoCloseConfig = {
   graceHours: number
@@ -138,7 +140,7 @@ export async function autoCloseOverdueShiftForUser(userId: string): Promise<Auto
 }
 
 export async function autoCloseOverdueShifts(options?: { limit?: number; batchSize?: number }): Promise<AutoCloseResult> {
-  const settings = normalizeConfig(await getShiftSettings())
+  const settings = normalizeConfig(await runWithoutShopScope(() => getShiftSettings()))
   const closed: StaffShift[] = []
   const failures: Array<{ shiftId?: string; error: string }> = []
   const max = Math.max(1, options?.limit ?? 5000)
@@ -147,14 +149,17 @@ export async function autoCloseOverdueShifts(options?: { limit?: number; batchSi
 
   while (closed.length + failures.length < max) {
     const left = max - (closed.length + failures.length)
-    const batch = await listOverdueOpenStaffShifts({
-      overdueBefore,
-      limit: Math.min(batchSize, left),
-    })
+    const batch = await runWithoutShopScope(() =>
+      listOverdueOpenStaffShifts({
+        overdueBefore,
+        limit: Math.min(batchSize, left),
+      })
+    )
     if (batch.length === 0) break
     for (const shift of batch) {
       try {
-        const done = await closeShiftAsSystem(shift)
+        const shopId = String(shift.shopId || CATHA_LOUNGE_SHOP_ID)
+        const done = await runWithShop(shopId, () => closeShiftAsSystem(shift))
         if (done) closed.push(done)
       } catch (error: any) {
         failures.push({

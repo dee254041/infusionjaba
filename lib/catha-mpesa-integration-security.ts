@@ -58,8 +58,8 @@ export function maskMpesaSecret(value: string, visibleEnds = 4): string {
 export async function getStoredIntegrationPhone(): Promise<string | null> {
   const client = await clientPromise
   const db = client.db(DB_NAME)
-  const settings = await db.collection('catha_settings').findOne({})
-  const phone = settings?.notifications?.mpesaIntegrationPhone
+  const { readSharedIntegrationPhone } = await import('@/lib/shops/mpesa-config')
+  const phone = await readSharedIntegrationPhone(db)
   if (!phone || typeof phone !== 'string') return null
   return normalizeKenyaPhone(phone)
 }
@@ -303,16 +303,8 @@ export async function saveIntegrationPhone(phone: string): Promise<void> {
   }
   const client = await clientPromise
   const db = client.db(DB_NAME)
-  await db.collection('catha_settings').updateOne(
-    {},
-    {
-      $set: {
-        'notifications.mpesaIntegrationPhone': normalized,
-        updatedAt: new Date(),
-      },
-    },
-    { upsert: true }
-  )
+  const { writeSharedIntegrationPhone } = await import('@/lib/shops/mpesa-config')
+  await writeSharedIntegrationPhone(db, normalized)
 }
 
 export async function createMpesaEditSession(requestedBy: string): Promise<{ token: string; expiresAt: Date }> {

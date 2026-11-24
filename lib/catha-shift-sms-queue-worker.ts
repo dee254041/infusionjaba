@@ -7,6 +7,8 @@ import {
   type ShiftSmsQueueItem,
 } from '@/lib/models/shift-sms-queue'
 import { randomUUID } from 'crypto'
+import { runWithShop, runWithoutShopScope } from '@/lib/shops/als'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
 
 async function processOne(item: ShiftSmsQueueItem): Promise<'sent' | 'failed'> {
   try {
@@ -42,11 +44,12 @@ async function processOne(item: ShiftSmsQueueItem): Promise<'sent' | 'failed'> {
 
 export async function processShiftSmsQueueBatch(limit = 50): Promise<{ processed: number; sent: number; failed: number }> {
   const workerId = `sms-worker-${randomUUID()}`
-  const jobs = await claimProcessableShiftSmsBatch(limit, workerId)
+  const jobs = await runWithoutShopScope(() => claimProcessableShiftSmsBatch(limit, workerId))
   let sent = 0
   let failed = 0
   for (const job of jobs) {
-    const result = await processOne(job)
+    const shopId = String((job as { shopId?: string }).shopId || CATHA_LOUNGE_SHOP_ID)
+    const result = await runWithShop(shopId, () => processOne(job))
     if (result === 'sent') sent += 1
     else failed += 1
   }

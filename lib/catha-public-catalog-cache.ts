@@ -1,22 +1,23 @@
 type Entry = { at: number; body: unknown }
 
-/** Shared by shoppers hitting the public product list. Cleared when stock or a product changes. */
+/** One cache entry per shop so a public menu cannot reuse another shop's catalog. */
 const TTL_MS = 15_000
-let entry: Entry | null = null
+const entries = new Map<string, Entry>()
 
-export function readPublicCatalogCache(): unknown | null {
+export function readPublicCatalogCache(shopId: string): unknown | null {
+  const entry = entries.get(shopId)
   if (!entry) return null
   if (Date.now() - entry.at > TTL_MS) {
-    entry = null
+    entries.delete(shopId)
     return null
   }
   return entry.body
 }
 
-export function writePublicCatalogCache(body: unknown) {
-  entry = { at: Date.now(), body }
+export function writePublicCatalogCache(shopId: string, body: unknown) {
+  entries.set(shopId, { at: Date.now(), body })
 }
 
 export function clearPublicCatalogCache() {
-  entry = null
+  entries.clear()
 }

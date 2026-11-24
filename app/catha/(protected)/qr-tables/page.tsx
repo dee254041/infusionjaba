@@ -25,6 +25,7 @@ export default function QRTablesPage() {
   const [newTableId, setNewTableId] = useState<number | "">("")
   const [isAdding, setIsAdding] = useState(false)
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (typeof window !== "undefined" ? window.location.origin : "https://www.infusionjaba.co.ke")
+  const [shopSlug, setShopSlug] = useState("catha-lounge")
   const printRef = useRef<HTMLDivElement>(null)
 
   const fetchTables = useCallback(async () => {
@@ -48,8 +49,17 @@ export default function QRTablesPage() {
     fetchTables()
   }, [fetchTables])
 
+  useEffect(() => {
+    fetch("/api/catha/shops", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.active?.slug) setShopSlug(String(data.active.slug))
+      })
+      .catch(() => undefined)
+  }, [])
+
   const getMenuUrl = (tableId: number | string) => {
-    return `${baseUrl}/menu?t=${encodeURIComponent(String(tableId))}`
+    return `${baseUrl}/menu?shop=${encodeURIComponent(shopSlug)}&t=${encodeURIComponent(String(tableId))}`
   }
 
   const getQRImageUrl = (url: string, size = 300, absolute = false) => {

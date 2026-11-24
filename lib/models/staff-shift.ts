@@ -58,6 +58,7 @@ export interface StaffShift {
   shiftCloseLock?: string | null
   shiftCloseLockExpiresAt?: Date | null
   metadata?: Record<string, unknown>
+  shopId?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -73,10 +74,15 @@ export async function ensureStaffShiftIndexes() {
   await col.createIndex({ status: 1, scheduledEndAt: 1 }, { name: 'shift_status_scheduled_end_idx' })
   await col.createIndex({ clockOutAt: -1 }, { name: 'shift_clockout_idx' })
   await col.createIndex({ businessDate: 1, staffUserId: 1 }, { name: 'shift_business_staff_idx' })
+  try {
+    await col.dropIndex('active_shift_unique_per_staff')
+  } catch {
+    /* replaced by the shop-scoped index */
+  }
   await col.createIndex(
-    { staffUserId: 1, status: 1 },
+    { shopId: 1, staffUserId: 1, status: 1 },
     {
-      name: 'active_shift_unique_per_staff',
+      name: 'active_shift_unique_per_staff_shop',
       unique: true,
       partialFilterExpression: { status: { $in: ['ACTIVE', 'PENDING_CLOSURE'] } },
     }

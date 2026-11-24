@@ -1,6 +1,7 @@
 import { Order, OrderStatus, PaymentStatus, PaymentMethod, type CartItem } from "@/types/menu"
 import { createCathaOrderId } from "@/lib/catha-order-id"
 import { startAdaptivePoll } from "@/lib/adaptive-poll"
+import { readMenuShopCode, withMenuShop } from "@/lib/shops/menu-shop"
 
 /** Minimal fields allowed by POST /api/menu-orders (strict schema). */
 function menuOrderCreateApiPayload(o: Order) {
@@ -19,6 +20,7 @@ function menuOrderCreateApiPayload(o: Order) {
     })),
     receivedBy: o.receivedBy,
     cancelledReason: o.cancelledReason,
+    shop: readMenuShopCode(),
   }
 }
 
@@ -32,6 +34,7 @@ function menuOrderPutApiPayload(orderId: string, patch: Partial<Order> & Record<
   if (patch.items && Array.isArray(patch.items)) {
     body.items = patch.items.map((i: CartItem) => ({ id: i.id, quantity: i.quantity }))
   }
+  body.shop = readMenuShopCode()
   return body
 }
 
@@ -185,7 +188,8 @@ class OrderStore {
       // Prefer public scoped poll (works for /menu guests). Staff pages may still
       // hit the auth route as a fallback when public returns empty.
       let formattedOrders: Order[] | null = null
-      const publicRes = await fetch(`/api/menu-orders?${params.toString()}`, {
+      params.set("shop", readMenuShopCode())
+      const publicRes = await fetch(withMenuShop(`/api/menu-orders?${params.toString()}`), {
         cache: "no-store",
       })
       if (publicRes.ok) {
@@ -372,7 +376,7 @@ class OrderStore {
       createdAt: Date.now(),
     }
 
-    const response = await fetch("/api/menu-orders", {
+    const response = await fetch(withMenuShop("/api/menu-orders"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(menuOrderCreateApiPayload(newOrder)),
@@ -416,7 +420,7 @@ class OrderStore {
     const previous = this.orders[index]
     const updated = { ...previous, ...patch, updatedAt: Date.now() }
 
-    const response = await fetch("/api/menu-orders", {
+    const response = await fetch(withMenuShop("/api/menu-orders"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(menuOrderPutApiPayload(orderId, patch)),

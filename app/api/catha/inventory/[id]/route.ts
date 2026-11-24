@@ -145,7 +145,7 @@ export async function GET(
           success: true,
           products: transformedProducts,
         })
-        res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120, max-age=60')
+        res.headers.set('Cache-Control', 'private, no-store')
         return res
       } catch (variantsErr: any) {
         console.error('[Bar Inventory API] Error fetching variants:', variantsErr?.message, variantsErr?.stack)

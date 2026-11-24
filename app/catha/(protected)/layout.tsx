@@ -1,5 +1,4 @@
 import { requireCathaNavAccessForRequestPath } from '@/lib/catha-auth'
-import { ShopFrame } from '@/components/station/shop-frame'
 
 export default async function CathaProtectedLayout({
   children,
@@ -7,5 +6,5 @@ export default async function CathaProtectedLayout({
   children: React.ReactNode
 }) {
   await requireCathaNavAccessForRequestPath()
-  return <ShopFrame>{children}</ShopFrame>
+  return <>{children}</>
 }

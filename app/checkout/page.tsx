@@ -148,7 +148,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("/api/catha/settings")
+        const res = await fetch("/api/catha/settings?shop=catha-lounge")
         if (!res.ok) return
         const data = await res.json()
         if (data.success && data.settings) {
@@ -222,15 +222,11 @@ export default function CheckoutPage() {
     const poll = async () => {
       if (stopped) return
       try {
-        const q = checkoutRequestId || pendingCheckoutSessionId
-        const res = await fetch(`/api/mpesa/transactions?search=${encodeURIComponent(q)}`, { cache: "no-store" })
-        const data = await res.json()
-        if (data.success && data.transactions?.length > 0) {
-          const tx = data.transactions.find((t: any) =>
-            t.accountReference === pendingCheckoutSessionId ||
-            (checkoutRequestId && t.checkoutRequestId === checkoutRequestId)
-          ) || data.transactions[0]
-          const status = normalizeMpesaStatus(tx.status)
+        if (!checkoutRequestId) return
+        const res = await fetch(`/api/mpesa/status?token=${encodeURIComponent(checkoutRequestId)}`, { cache: "no-store" })
+        const data = await res.json().catch(() => null)
+        if (res.ok && data?.status) {
+          const status = normalizeMpesaStatus(data.status)
           if (status === "COMPLETED") {
             stop()
             toast.dismiss("mpesa-push")
@@ -517,7 +513,9 @@ export default function CheckoutPage() {
       if (stkData.success) {
         toast.loading("Payment request sent! Enter your M-Pesa PIN when prompted.", { id: "mpesa-push" })
         setPendingCheckoutSessionId(checkoutSessionId)
-        setCheckoutRequestId(stkData.data?.checkoutRequestID || null)
+        const statusToken = String(stkData.data?.publicStatusToken || "")
+        if (!statusToken) throw new Error("Payment could not be tracked. Please try again.")
+        setCheckoutRequestId(statusToken)
       } else {
         setPaymentError({ message: stkData.error || "Failed to initiate payment. Check M-Pesa settings.", status: "INITIATION_FAILED" })
         fetch(`/api/ecommerce/checkout-sessions/${encodeURIComponent(checkoutSessionId)}`, {

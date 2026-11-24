@@ -151,6 +151,7 @@ export const cathaAuth = NextAuth({
             role,
             status,
             permissions: [],
+            shopIds: [],
           })
           await updateCathaUserLastLogin(user.email)
           if (role === 'SUPER_ADMIN') {

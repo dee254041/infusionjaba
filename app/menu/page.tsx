@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils"
 import { normalizeKenyaPhone } from "@/lib/phone-utils"
 import { toast } from "sonner"
 import styles from "./menu.module.css"
+import { rememberMenuShop } from "@/lib/shops/menu-shop"
 
 function pouringHeadline(): string {
   if (typeof window === "undefined") return "What are we pouring tonight?"
@@ -56,6 +57,7 @@ function getOrCreateGuestSessionId(): string {
 
 function MenuContent() {
   const searchParams = useSearchParams()
+  const shopFromQuery = (searchParams.get("shop") || "catha-lounge").trim().toLowerCase()
   const tableFromQuery = searchParams.get("t") || searchParams.get("table")
   // Apply ?t= on first paint so QR scans never flash the manual table gate.
   const initialTableFromQuery = tableFromQuery ? String(tableFromQuery).trim() : ""
@@ -150,8 +152,15 @@ function MenuContent() {
   }, [menuItems])
 
   useEffect(() => {
+    rememberMenuShop(shopFromQuery)
     document.title = "Menu | Catha Lounge"
-  }, [])
+    fetch(`/api/catha/shops/public?shop=${encodeURIComponent(shopFromQuery)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.shop?.name) document.title = `Menu | ${data.shop.name}`
+      })
+      .catch(() => undefined)
+  }, [shopFromQuery])
 
   const handleJabaClick = () => {
     setSelectedCategory("all")
@@ -163,7 +172,8 @@ function MenuContent() {
 
   // Fetch real products from inventory
   useEffect(() => {
-    fetch("/api/catha/inventory?visibleOnly=true")
+    rememberMenuShop(shopFromQuery)
+    fetch(`/api/catha/inventory?visibleOnly=true&shop=${encodeURIComponent(shopFromQuery)}`)
       .then((r) => r.json())
       .then((data) => {
         if (!data.products) return
@@ -198,7 +208,7 @@ function MenuContent() {
       })
       .catch(console.error)
       .finally(() => setMenuLoading(false))
-  }, [])
+  }, [shopFromQuery])
 
   // Keep table in sync with URL / session (URL already applied on first paint when ?t= is present)
   useEffect(() => {
@@ -579,7 +589,8 @@ function MenuContent() {
   const handlePaymentSuccess = useCallback(async (
     method: "mpesa" | "cash",
     mpesaReceiptNumber?: string,
-    paidPhone?: string
+    paidPhone?: string,
+    statusToken?: string
   ) => {
     const cust = customerNumber ?? null
     const guest = customerNumber == null ? guestSessionId : null
@@ -591,14 +602,16 @@ function MenuContent() {
 
     const openReceiptFromConfirm = async (orderIds: string[]) => {
       try {
-        const res = await fetch("/api/menu-orders/confirm-payment", {
+        const res = await fetch(`/api/menu-orders/confirm-payment?shop=${encodeURIComponent(shopFromQuery)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             orderIds,
             phone: normalizedCustomerPhone,
             mpesaReceiptNumber: mpesaReceiptNumber ?? null,
+            statusToken: statusToken ?? null,
             tableNumber,
+            shop: shopFromQuery,
           }),
         })
         const data = await res.json()

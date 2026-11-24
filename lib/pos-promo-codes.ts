@@ -274,7 +274,13 @@ export async function recordPromoRedemption(
 
 export async function ensurePromoCodeIndexes(db: Db): Promise<void> {
   try {
-    await db.collection(POS_PROMO_CODES_COLLECTION).createIndex({ code: 1 }, { unique: true })
+    const col = db.collection(POS_PROMO_CODES_COLLECTION)
+    try {
+      await col.dropIndex('code_1')
+    } catch {
+      /* already replaced */
+    }
+    await col.createIndex({ shopId: 1, code: 1 }, { unique: true, name: 'shop_promo_code_unique' })
     await db.collection(POS_PROMO_REDEMPTIONS_COLLECTION).createIndex({ code: 1, customerId: 1 })
     await db.collection(POS_PROMO_REDEMPTIONS_COLLECTION).createIndex({ orderId: 1 })
   } catch {

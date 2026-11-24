@@ -49,9 +49,18 @@ export async function ensureShiftSettingsIndexes() {
   await client.db(DB_NAME).collection(COLLECTION).createIndex({ _id: 1 }, { unique: true })
 }
 
+async function shiftSettingsId(): Promise<string> {
+  const { resolveShopScope } = await import('@/lib/shops/context')
+  const { CATHA_LOUNGE_SHOP_ID, singletonDocId } = await import('@/lib/shops/constants')
+  const decision = await resolveShopScope()
+  const shopId = decision.mode === 'shop' ? decision.shopId : CATHA_LOUNGE_SHOP_ID
+  return singletonDocId(SETTINGS_ID, shopId)
+}
+
 export async function getShiftSettings(): Promise<ShiftSettings> {
   const client = await clientPromise
-  const doc = await client.db(DB_NAME).collection(COLLECTION).findOne({ _id: SETTINGS_ID })
+  const settingsId = await shiftSettingsId()
+  const doc = await client.db(DB_NAME).collection(COLLECTION).findOne({ _id: settingsId as never })
   if (!doc) return { ...DEFAULT_SHIFT_SETTINGS }
   return {
     openingTime: doc.openingTime ?? DEFAULT_SHIFT_SETTINGS.openingTime,
@@ -91,6 +100,6 @@ export async function saveShiftSettings(
   await client
     .db(DB_NAME)
     .collection(COLLECTION)
-    .updateOne({ _id: SETTINGS_ID }, { $set: next }, { upsert: true })
+    .updateOne({ _id: (await shiftSettingsId()) as never }, { $set: next }, { upsert: true })
   return next
 }

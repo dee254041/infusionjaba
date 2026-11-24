@@ -10,8 +10,9 @@ import {
 } from '@/lib/ecommerce-order-from-session'
 import { logEcommerceRecoveryCritical, releaseHoldAndUpdateSessionStatus } from '@/lib/ecommerce-stock-reservation'
 import { maybeSendCathaPaymentReceiptSms } from '@/lib/catha-payment-sms'
-import { isStationOrderId } from '@/lib/station/slug'
-import { fulfillStationMpesa } from '@/lib/station/store'
+import { bindActiveShop } from '@/lib/shops/als'
+import { shopIdForPaymentCallback } from '@/lib/shops/payment-shop'
+import { shouldDeductStockOnCallback } from '@/lib/shops/payment-status'
 /**
  * STK Push Callback Handler
  * Called by M-Pesa when customer completes or cancels payment
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
       })
 
       if (transaction) {
+        bindActiveShop(shopIdForPaymentCallback(transaction as { shopId?: unknown }))
         let status = 'FAILED'
         let mpesaReceiptNumber = null
 
@@ -138,7 +140,7 @@ export async function POST(request: Request) {
                 })
               }
               const items =
-                order && !ecommerceAmountMismatch && !order.stockDeducted
+                order && !ecommerceAmountMismatch && shouldDeductStockOnCallback(order as { stockDeducted?: unknown })
                   ? filterInventoryStockLineItems(order.items)
                   : []
 
@@ -226,19 +228,6 @@ export async function POST(request: Request) {
                   console.error('[M-Pesa Callback] Failed to send payment receipt SMS:', smsError)
                 }
               }
-            } else if (isStationOrderId(String(orderId))) {
-              const stationPaid = await fulfillStationMpesa(
-                db,
-                String(orderId),
-                mpesaReceiptNumber || transaction.transaction_id || '',
-                Number(transaction.amount ?? 0),
-              )
-              if (!stationPaid.ok) {
-                console.error('[M-Pesa Callback] Station order was not marked paid', {
-                  orderId,
-                  error: stationPaid.error,
-                })
-              }
             } else {
               const checkoutSession = await db
                 .collection(ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION)
@@ -273,7 +262,7 @@ export async function POST(request: Request) {
                       sessionId: checkoutSession.id,
                       reason: created.reason,
                       detail: created.detail,
-                      checkoutRequestId,
+                      checkoutRequestID,
                     })
                   }
                   await db.collection(ECOMMERCE_CHECKOUT_SESSIONS_COLLECTION).updateOne(

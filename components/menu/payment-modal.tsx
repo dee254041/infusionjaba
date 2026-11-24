@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Check, Smartphone, Pencil } from "lucide-react"
+import { readMenuShopCode, withMenuShop } from "@/lib/shops/menu-shop"
 
 interface PaymentModalProps {
   open: boolean
@@ -17,7 +18,8 @@ interface PaymentModalProps {
   onSuccess: (
     method: "mpesa" | "cash",
     mpesaReceiptNumber?: string,
-    paidPhone?: string
+    paidPhone?: string,
+    statusToken?: string
   ) => void
   /** Skip the choose screen and go straight to M-Pesa */
   skipToMpesa?: boolean
@@ -94,7 +96,8 @@ export function PaymentModal({
 
     try {
       const ref = `MENU${Date.now().toString().slice(-8)}`
-      const res = await fetch("/api/mpesa/stk-push", {
+      const shop = readMenuShopCode()
+      const res = await fetch(withMenuShop("/api/mpesa/stk-push"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -102,6 +105,7 @@ export function PaymentModal({
           amount,
           accountReference: ref,
           transactionDesc: `Table order ${ref}`,
+          shop,
         }),
       })
       const data = await res.json()
@@ -112,7 +116,12 @@ export function PaymentModal({
         return
       }
 
-      const cid = data.data?.checkoutRequestID
+      const statusToken = String(data.data?.publicStatusToken || "")
+      if (!statusToken) {
+        setErrorMsg("Payment could not be tracked. Please try again.")
+        setStep("error")
+        return
+      }
       pollCountRef.current = 0
 
       pollRef.current = setInterval(async () => {
@@ -125,28 +134,25 @@ export function PaymentModal({
         }
 
         try {
-          const search = cid || ref
-          const txRes = await fetch(`/api/mpesa/transactions?search=${encodeURIComponent(search)}`)
-          const txData = await txRes.json()
-          const tx = Array.isArray(txData.transactions) ? txData.transactions[0] : null
+          const txRes = await fetch(`/api/mpesa/status?token=${encodeURIComponent(statusToken)}`, { cache: "no-store" })
+          const txData = await txRes.json().catch(() => null)
+          const status = String(txData?.status || "")
 
-          if (tx?.status === "COMPLETED" || tx?.result_code === "0") {
+          if (status === "COMPLETED") {
             stopPolling()
-            const receipt: string | undefined =
-              tx.mpesaReceiptNumber || tx.mpesa_receipt_number || tx.MpesaReceiptNumber || undefined
             setStep("success")
             setTimeout(() => {
-              onSuccess("mpesa", receipt, phoneNumber.trim())
+              onSuccess("mpesa", undefined, phoneNumber.trim(), statusToken)
               setStep("settle")
               onOpenChange(false)
             }, 1800)
-          } else if (tx?.status === "CANCELLED" || tx?.result_code === "1032") {
+          } else if (status === "CANCELLED") {
             stopPolling()
             setErrorMsg("Payment was cancelled. Please try again.")
             setStep("error")
-          } else if (tx?.status === "FAILED") {
+          } else if (status === "FAILED") {
             stopPolling()
-            setErrorMsg(tx.result_desc || "Payment failed. Please try again.")
+            setErrorMsg("Payment failed. Please try again.")
             setStep("error")
           }
         } catch {

@@ -12,6 +12,7 @@ import {
   type PendingWaiterCall,
 } from "@/lib/waiter-call"
 import { useAdaptivePoll } from "@/hooks/use-adaptive-poll"
+import { withMenuShop } from "@/lib/shops/menu-shop"
 
 /**
  * Polls a pending waiter call after the sheet closes.
@@ -41,7 +42,7 @@ export function useWaiterCallAck(tableKey: string | null | undefined) {
     if (!pending?.callId || pending.ackedNotified) return
     try {
       const res = await fetch(
-        `/api/waiter-calls?callId=${encodeURIComponent(pending.callId)}`,
+        withMenuShop(`/api/waiter-calls?callId=${encodeURIComponent(pending.callId)}`),
         { cache: "no-store" }
       )
       if (!res.ok) return

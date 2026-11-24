@@ -309,6 +309,6 @@ export async function GET(request: Request) {
     },
     rows: enrichedShifts,
   })
-  response.headers.set('Cache-Control', 'private, max-age=30')
+  response.headers.set('Cache-Control', 'private, no-store')
   return response
 }

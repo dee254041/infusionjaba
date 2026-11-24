@@ -74,9 +74,11 @@ const clientPromise = globalForMongo._mongoClientPromise
 // Wrap the primary client promise with the transparent secondary sync proxy.
 // Every write that goes through this promise is automatically mirrored to
 // SECONDARY_MONGODB_URI after a successful primary write — reads are unchanged.
-const syncedClientPromise: Promise<MongoClient> = clientPromise.then(
-  wrapClientWithSync,
-)
+// Shop scope then forces shop-owned reads and writes onto the authorized shop.
+const syncedClientPromise: Promise<MongoClient> = clientPromise.then(async (client) => {
+  const { wrapClientWithShopScope } = await import('./shops/scoped-collection')
+  return wrapClientWithShopScope(wrapClientWithSync(client))
+})
 
 // Helper function to get database
 export async function getDatabase(dbName: string = 'infusion_jaba') {

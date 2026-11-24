@@ -23,10 +23,18 @@ export interface PosPromotionSettingsDoc {
 
 export const DEFAULT_CONFLICT_MODE: PromotionConflictMode = 'never_stack'
 
+async function promotionSettingsId(): Promise<string> {
+  const { resolveShopScope } = await import('@/lib/shops/context')
+  const { CATHA_LOUNGE_SHOP_ID, singletonDocId } = await import('@/lib/shops/constants')
+  const decision = await resolveShopScope()
+  const shopId = decision.mode === 'shop' ? decision.shopId : CATHA_LOUNGE_SHOP_ID
+  return singletonDocId(SETTINGS_DOC_ID, shopId)
+}
+
 export async function loadPromotionSettings(db: Db): Promise<PromotionConflictMode> {
   const doc = await db
     .collection<PosPromotionSettingsDoc>(POS_PROMOTION_SETTINGS_COLLECTION)
-    .findOne({ _id: SETTINGS_DOC_ID })
+    .findOne({ _id: (await promotionSettingsId()) as never })
   const mode = doc?.conflictMode
   if (
     mode === 'best_discount' ||
@@ -44,11 +52,12 @@ export async function savePromotionSettings(
   conflictMode: PromotionConflictMode,
   updatedBy: string | null
 ): Promise<void> {
+  const settingsId = await promotionSettingsId()
   await db.collection(POS_PROMOTION_SETTINGS_COLLECTION).updateOne(
-    { _id: SETTINGS_DOC_ID },
+    { _id: settingsId as never },
     {
       $set: { conflictMode, updatedBy, updatedAt: new Date() },
-      $setOnInsert: { _id: SETTINGS_DOC_ID },
+      $setOnInsert: { _id: settingsId },
     },
     { upsert: true }
   )

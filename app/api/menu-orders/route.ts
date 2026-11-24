@@ -7,6 +7,8 @@ import { menuOrderCreateSchema, menuOrderPutSchema, formatZodError } from "@/lib
 import { maybeSendMenuOrderStaffSms } from "@/lib/catha-menu-order-sms"
 import { applyMenuOrderStockChange } from "@/lib/menu-order-stock"
 import { phoneSearchVariants } from "@/lib/catha-orders-list-filter"
+import { bindPublicShopFromRequest } from "@/lib/shops/context"
+import { ShopScopeError } from "@/lib/shops/access"
 
 // Public-facing menu orders API used by /menu (QR + phone).
 // Writes into the same `menu_orders` collection that Catha staff see via /api/catha/menu-orders.
@@ -72,6 +74,14 @@ export async function GET(request: Request) {
       )
     }
 
+    try {
+      await bindPublicShopFromRequest(request)
+    } catch (error) {
+      if (error instanceof ShopScopeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
     const { searchParams } = new URL(request.url)
     const orderIdsRaw = (searchParams.get("orderIds") || "").trim()
     const customerNumber = (searchParams.get("customerNumber") || "").trim()
@@ -195,6 +205,14 @@ export async function POST(request: Request) {
       return NextResponse.json(formatZodError(parsed.error), { status: 400 })
     }
     const body = parsed.data
+    try {
+      await bindPublicShopFromRequest(request, body.shop)
+    } catch (error) {
+      if (error instanceof ShopScopeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
     const db = await getDatabase("infusion_jaba")
     const orderId = body.orderId.trim()
 
@@ -347,8 +365,16 @@ export async function PUT(request: Request) {
       return NextResponse.json(formatZodError(parsed.error), { status: 400 })
     }
     const body = parsed.data
+    try {
+      await bindPublicShopFromRequest(request, body.shop)
+    } catch (error) {
+      if (error instanceof ShopScopeError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
     const db = await getDatabase("infusion_jaba")
-    const { orderId, mpesaReceiptNumber, ...rest } = body
+    const { orderId, mpesaReceiptNumber, shop: _shop, ...rest } = body
     const updateData: Record<string, unknown> = { ...rest }
     if (mpesaReceiptNumber !== undefined) {
       updateData.mpesaReceiptNumber = mpesaReceiptNumber

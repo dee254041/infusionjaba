@@ -18,6 +18,9 @@ export interface DistributorRequestDoc {
   reviewedAt?: Date
   notes?: string
   requestType?: 'supplier' | 'jaba_distributor'
+  shopId?: string
+  shopScope?: 'global' | 'shop'
+  ownership?: 'global'
 }
 
 export async function getAllDistributorRequests(): Promise<DistributorRequestDoc[]> {
@@ -48,7 +51,7 @@ export async function getDistributorRequestsByType(
       : { requestType: 'jaba_distributor' }
   const requests = await db
     .collection<DistributorRequestDoc>(COLLECTION)
-    .find(filter)
+    .find(filter as Record<string, unknown>)
     .sort({ submittedAt: -1 })
     .toArray()
   return requests.map((r) => ({

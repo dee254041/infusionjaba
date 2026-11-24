@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { requireSuperAdminApi } from '@/lib/catha-auth'
-import { getAllCathaUsers, getCathaUserByEmail, readCathaShopAssignments, updateCathaUser, type CathaShopAssignment, type CathaUserRole, type CathaUserStatus } from '@/lib/models/catha-user'
+import { getAllCathaUsers, getCathaUserByEmail, updateCathaUser, type CathaUserRole, type CathaUserStatus } from '@/lib/models/catha-user'
 import { CathaPermissions, normalizePermissions } from '@/lib/catha-permissions-model'
 import { getPhoneValidationError, normalizeKenyaPhone } from '@/lib/phone-utils'
+import { userVisibleInShopDirectory } from '@/lib/shops/access'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
+import { resolveShopScope } from '@/lib/shops/context'
 
 const VALID_ROLES: CathaUserRole[] = ['SUPER_ADMIN', 'ADMIN', 'CASHIER', 'PENDING']
 const VALID_STATUSES: CathaUserStatus[] = ['ACTIVE', 'PENDING', 'DISABLED']
@@ -17,7 +20,7 @@ function formatUser(u: Awaited<ReturnType<typeof getAllCathaUsers>>[0]) {
     role: u.role,
     status: u.status,
     permissions: normalizePermissions(u.permissions ?? {}),
-    shopAssignments: u.shopAssignments ?? null,
+    shopIds: u.shopIds ?? null,
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
     updatedAt: u.updatedAt instanceof Date ? u.updatedAt.toISOString() : u.updatedAt,
     lastLogin: u.lastLogin ? (u.lastLogin instanceof Date ? u.lastLogin.toISOString() : u.lastLogin) : null,
@@ -28,7 +31,9 @@ export async function GET() {
   const [session, err] = await requireSuperAdminApi()
   if (err) return err
   try {
-    const users = await getAllCathaUsers()
+    const scope = await resolveShopScope()
+    const shopId = scope.mode === 'shop' ? scope.shopId : CATHA_LOUNGE_SHOP_ID
+    const users = (await getAllCathaUsers()).filter((user) => userVisibleInShopDirectory(user, shopId))
     return NextResponse.json({ success: true, users: users.map(formatUser) })
   } catch (e: any) {
     console.error('[catha/users] GET error:', e?.message)
@@ -59,13 +64,6 @@ export async function PATCH(request: Request) {
       updates.permissions = basePermissions
     }
 
-    if (Array.isArray(body.shopAssignments)) {
-      const parsed = readCathaShopAssignments(body.shopAssignments) || []
-      const unique = new Map<string, CathaShopAssignment>()
-      for (const item of parsed) unique.set(item.shopId, item)
-      updates.shopAssignments = [...unique.values()]
-    }
-
     if (body.phoneNumber !== undefined) {
       const rawPhone = typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
       const validationError = getPhoneValidationError(rawPhone)
@@ -77,7 +75,7 @@ export async function PATCH(request: Request) {
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No valid updates (status, role, permissions, phone, or shops)' },
+        { success: false, error: 'No valid updates (status, role, permissions, or phoneNumber)' },
         { status: 400 }
       )
     }

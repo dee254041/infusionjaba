@@ -10,7 +10,7 @@ export function CathaWaitingClient({ email }: { email: string }) {
     <div className="w-full max-w-sm rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm text-center space-y-4">
       <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Account pending approval</h1>
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        Your account is under review. You’ll be able to access Catha once an administrator approves you.
+        This account is pending assignment. It cannot open orders, stock, or payments until an administrator assigns a shop and approves the account. Signing in does not join Catha Lounge automatically.
       </p>
       <p className="text-xs text-slate-500 dark:text-slate-500 break-all">{email}</p>
       <div className="flex flex-col gap-2 pt-2">

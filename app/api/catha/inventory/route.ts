@@ -4,11 +4,12 @@ import { auth } from '@/lib/auth-catha'
 import { normalizePermissions, hasCathaPermission } from '@/lib/catha-permissions-model'
 import { ensureCathaBottledWater } from '@/lib/catha-bottled-water'
 import { clearPublicCatalogCache, readPublicCatalogCache, writePublicCatalogCache } from '@/lib/catha-public-catalog-cache'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
+import { resolveShopScope } from '@/lib/shops/context'
 
 export const runtime = 'nodejs'
-
-// Cache configuration - Next.js will cache responses for 60 seconds
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 let visibilityDefaultsBackfilled = false
 
 async function dropLegacyNameUniqueIndexes(db: any) {
@@ -74,8 +75,10 @@ export async function GET(request: Request) {
       limit === 0 &&
       skip === 0
 
+    const scope = await resolveShopScope().catch(() => null)
+    const catalogShopId = scope?.mode === 'shop' ? scope.shopId : CATHA_LOUNGE_SHOP_ID
     if (isPublicCatalog) {
-      const cached = readPublicCatalogCache()
+      const cached = readPublicCatalogCache(catalogShopId)
       if (cached) {
         return NextResponse.json(cached, {
           headers: {
@@ -269,14 +272,14 @@ export async function GET(request: Request) {
       ...(limit > 0 && { total: totalCount, limit, skip }),
       ...(aiFilter ? { aiFilterApplied: aiFilter } : {}),
     }
-    if (isPublicCatalog) writePublicCatalogCache(payload)
+    if (isPublicCatalog) writePublicCatalogCache(catalogShopId, payload)
     const response = NextResponse.json(payload)
 
     if (aiFilter && aiFiltersNeedingOrders.includes(aiFilter)) {
       response.headers.set('Cache-Control', 'private, no-store, max-age=0')
     } else {
       // POS-critical: stock must stay fresh. Short TTL - 5s cache, 10s SWR (product list/metadata OK; stock near real-time)
-      response.headers.set('Cache-Control', 'public, s-maxage=5, stale-while-revalidate=10, max-age=5')
+      response.headers.set('Cache-Control', 'private, no-store')
     }
     
     return response

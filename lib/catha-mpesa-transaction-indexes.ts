@@ -19,6 +19,14 @@ export async function ensureMpesaTransactionIndexes(db: Db): Promise<void> {
       }
     )
     console.log('[M-Pesa DB] Index ensured: uniq_mpesa_checkout_request_id')
+    await db.collection('mpesa_transactions').createIndex(
+      { public_status_token: 1 },
+      {
+        unique: true,
+        name: 'uniq_mpesa_public_status_token',
+        partialFilterExpression: { public_status_token: { $type: 'string', $gt: '' } },
+      }
+    )
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     if (!msg.includes('already exists') && !msg.includes('same name')) {

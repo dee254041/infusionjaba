@@ -22,7 +22,6 @@ import {
   Brain,
   Clock3,
   ShieldCheck,
-  Store,
 } from 'lucide-react'
 import type { CanonicalPermissionKey } from './catha-access'
 
@@ -66,7 +65,6 @@ export const CATHA_NAV_ITEMS: CathaNavItem[] = [
  * Sidebar shows these only when user role is SUPER_ADMIN.
  */
 export const CATHA_SUPER_ADMIN_NAV_ITEMS: { name: string; href: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
-  { name: 'Stations', href: '/catha/stations', icon: Store, color: 'emerald' },
   { name: 'AI Intelligence', href: '/catha/ai-intelligence', icon: Brain, color: 'indigo' },
   { name: 'Audit Logs', href: '/catha/audit-logs', icon: ShieldCheck, color: 'amber' },
 ]

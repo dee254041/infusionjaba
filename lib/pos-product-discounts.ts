@@ -121,7 +121,13 @@ export async function ensurePosDiscountIndexes(db: Db): Promise<void> {
   try {
     await db.collection(POS_DISCOUNTS_COLLECTION).createIndex({ productId: 1 }, { unique: true })
     await db.collection(POS_DISCOUNTS_COLLECTION).createIndex({ status: 1, startAt: 1, endAt: 1 })
-    await db.collection(POS_CATEGORY_DISCOUNTS_COLLECTION).createIndex({ category: 1 }, { unique: true })
+    const categoryCol = db.collection(POS_CATEGORY_DISCOUNTS_COLLECTION)
+    try {
+      await categoryCol.dropIndex('category_1')
+    } catch {
+      /* already replaced */
+    }
+    await categoryCol.createIndex({ shopId: 1, category: 1 }, { unique: true, name: 'shop_category_discount_unique' })
     await db.collection(POS_DISCOUNT_AUDIT_COLLECTION).createIndex({ createdAt: -1 })
   } catch {
     /* exists */

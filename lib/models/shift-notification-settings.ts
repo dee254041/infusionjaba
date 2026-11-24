@@ -26,9 +26,17 @@ const DEFAULT_SETTINGS: ShiftNotificationSettings = {
   updatedAt: new Date(),
 }
 
+async function notificationSettingsId(): Promise<string> {
+  const { resolveShopScope } = await import('@/lib/shops/context')
+  const { CATHA_LOUNGE_SHOP_ID, singletonDocId } = await import('@/lib/shops/constants')
+  const decision = await resolveShopScope()
+  const shopId = decision.mode === 'shop' ? decision.shopId : CATHA_LOUNGE_SHOP_ID
+  return singletonDocId(SETTINGS_ID, shopId)
+}
+
 export async function getShiftNotificationSettings(): Promise<ShiftNotificationSettings> {
   const client = await clientPromise
-  const doc = await client.db(DB_NAME).collection(COLLECTION).findOne({ _id: SETTINGS_ID })
+  const doc = await client.db(DB_NAME).collection(COLLECTION).findOne({ _id: (await notificationSettingsId()) as never })
   if (!doc) return { ...DEFAULT_SETTINGS }
   return {
     enabled: Boolean(doc.enabled),
@@ -53,6 +61,7 @@ export async function saveShiftNotificationSettings(
     updatedAt: new Date(),
   }
   const client = await clientPromise
-  await client.db(DB_NAME).collection(COLLECTION).updateOne({ _id: SETTINGS_ID }, { $set: next }, { upsert: true })
+  const settingsId = await notificationSettingsId()
+  await client.db(DB_NAME).collection(COLLECTION).updateOne({ _id: settingsId as never }, { $set: next }, { upsert: true })
   return next
 }

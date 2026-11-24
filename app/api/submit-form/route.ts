@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 import { createDistributorRequest } from '@/lib/models/distributor-request'
+import { CATHA_LOUNGE_SHOP_ID } from '@/lib/shops/constants'
+import { globalDistributorOwnership } from '@/lib/shops/filter'
 
 const SMTP_EMAIL = process.env.SMTP_EMAIL
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD
@@ -234,6 +236,9 @@ export async function POST(request: Request) {
       submittedAt: new Date(),
       notes,
       requestType: type === 'supplier' ? 'supplier' : 'jaba_distributor',
+      ...(type === 'supplier'
+        ? { shopId: CATHA_LOUNGE_SHOP_ID, shopScope: 'shop' as const }
+        : globalDistributorOwnership()),
     })
 
     const subject =

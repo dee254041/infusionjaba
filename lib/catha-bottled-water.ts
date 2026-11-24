@@ -31,9 +31,13 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** Add 500ml and 1L house water to lounge inventory if they are not already there. */
+/** Add 500ml and 1L house water to Catha Lounge inventory if they are not already there. */
 export async function ensureCathaBottledWater(db: Db) {
   if (ensured) return
+  const { CATHA_LOUNGE_SHOP_ID } = await import('@/lib/shops/constants')
+  const { resolveShopScope } = await import('@/lib/shops/context')
+  const decision = await resolveShopScope().catch(() => null)
+  if (decision?.mode === 'shop' && decision.shopId !== CATHA_LOUNGE_SHOP_ID) return
   const now = new Date()
   const inventory = db.collection('bar_inventory')
   const categories = db.collection('bar_categories')

@@ -23,7 +23,6 @@ import {
 import { toast } from "sonner"
 import { hasCathaPermission, normalizePermissions } from "@/lib/catha-permissions-model"
 import type { FinanceDashboardSnapshot } from "@/lib/catha-finance-dashboard"
-import { NetworkOverview } from "@/components/station/network-overview"
 
 function formatKes(amount: number): string {
   return `KES ${amount.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -129,12 +128,6 @@ export default function FinanceDashboardPage() {
         subtitle="Payment recovery, M-Pesa activity, and daily reconciliation"
       />
       <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto w-full">
-        {((session?.user as { role?: string } | undefined)?.role || "").toUpperCase() === "SUPER_ADMIN" ? (
-          <>
-            <NetworkOverview title="Every station" />
-            <p className="text-sm text-muted-foreground">The reconciliation below is Catha Lounge only.</p>
-          </>
-        ) : null}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Reconciliation date</p>

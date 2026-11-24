@@ -9,6 +9,8 @@ import {
   linkedMpesaRowsFromOrderDoc,
 } from '@/lib/catha-mpesa-order-allocations'
 import { resolveLinkablePaymentWindow, type ShiftWindowSource } from '@/lib/catha-linkable-payment-window'
+import { auth } from '@/lib/auth-catha'
+import { readActiveShopForSession } from '@/lib/shops/context'
 
 function textValue(value: unknown): string {
   if (typeof value === 'string') return value
@@ -47,6 +49,17 @@ function isoDate(value: unknown): string {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    const activeShop = await readActiveShopForSession()
+    if (!activeShop) {
+      const session = await auth()
+      if (!session?.user?.email) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+      }
+      return NextResponse.json(
+        { success: false, error: 'No shop is assigned to this account.' },
+        { status: 403 }
+      )
+    }
     const db = await getDatabase('infusion_jaba')
 
     // Build query filters
@@ -178,13 +191,6 @@ export async function GET(request: Request) {
         findLimit = 400
       }
     }
-
-    // Station tills share this M-Pesa account but their rows carry shopId.
-    // Catha keeps only payments that were not tagged to another shop.
-    query.$and = [
-      ...(Array.isArray(query.$and) ? query.$and : []),
-      { $or: [{ shopId: { $exists: false } }, { shopId: null }, { shopId: '' }, { shopId: 'catha' }] },
-    ]
 
     // Get transactions
     const transactions = await db

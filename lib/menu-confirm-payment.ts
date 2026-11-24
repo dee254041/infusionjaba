@@ -1,12 +1,14 @@
 import type { Db } from "mongodb"
 import { normalizePhoneNumbers, sendJabaSmsStrict } from "@/lib/jaba-sms"
 import { getOrderReceiptUrl } from "@/lib/pay-url"
+import { applyMenuOrderStockChange } from "@/lib/menu-order-stock"
 
 export type MenuConfirmPaymentInput = {
   orderIds: string[]
   phone?: string | null
   mpesaReceiptNumber?: string | null
   tableNumber?: string | null
+  businessName?: string | null
 }
 
 export type MenuConfirmPaymentResult = {
@@ -26,11 +28,12 @@ function buildTabReceiptMessage(opts: {
   orderId: string
   total: number
   roundCount: number
+  businessName: string
 }): string {
   const link = getOrderReceiptUrl(opts.orderId, process.env.CATHA_RECEIPT_LINK_BASE)
   const rounds =
     opts.roundCount > 1 ? ` · ${opts.roundCount} rounds` : ""
-  return `Payment received. Your tab at Catha Lounge is settled (KES ${Math.round(
+  return `Payment received. Your tab at ${opts.businessName} is settled (KES ${Math.round(
     opts.total
   ).toLocaleString("en-KE")}${rounds}).\nReceipt: ${link}\n\nThank you for visiting us.`
 }
@@ -88,6 +91,18 @@ export async function confirmMenuPayment(
     null
   const phone = normalizePhoneNumbers(String(phoneRaw || ""))[0] || null
   const receipt = input.mpesaReceiptNumber ? String(input.mpesaReceiptNumber) : null
+  for (const mo of ordered) {
+    const stock = await applyMenuOrderStockChange(db, {
+      orderId: String(mo.orderId),
+      previous: mo,
+      next: { ...mo, status: "paid", paymentStatus: "PAID", paymentMethod: "mpesa" },
+      actor: "Customer",
+    })
+    if (!stock.ok) return { ok: false, error: stock.error, status: 409 }
+    mo.stockDeducted = stock.stockDeducted
+    mo.stockDeductedAt = stock.stockDeductedAt
+  }
+
   const paidAt = new Date()
   const tableNumber = String(
     input.tableNumber ||
@@ -107,6 +122,7 @@ export async function confirmMenuPayment(
         updatedAt: paidAt,
         ...(receipt ? { mpesaReceiptNumber: receipt } : {}),
         ...(phone ? { customerPhone: phone } : {}),
+        stockDeducted: true,
       },
     }
   )
@@ -142,6 +158,8 @@ export async function confirmMenuPayment(
           status: "completed",
           updatedAt: paidAt,
           ...(receipt ? { mpesaReceiptNumber: receipt } : {}),
+          stockDeducted: true,
+          shopId: ordered[0]?.shopId,
         },
         $setOnInsert: {
           timestamp: mo.createdAt instanceof Date ? mo.createdAt : paidAt,
@@ -213,6 +231,7 @@ export async function confirmMenuPayment(
           orderId: primaryOrderId,
           total: tabTotal,
           roundCount: ordered.length,
+          businessName: String(input.businessName || "your lounge"),
         })
         await sendJabaSmsStrict(message, [phone])
         await db.collection("orders").updateOne(
