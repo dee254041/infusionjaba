@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireSuperAdminApi } from '@/lib/catha-auth'
-import { getAllCathaUsers, getCathaUserByEmail, updateCathaUser, type CathaUserRole, type CathaUserStatus } from '@/lib/models/catha-user'
+import { getAllCathaUsers, getCathaUserByEmail, readCathaShopAssignments, updateCathaUser, type CathaShopAssignment, type CathaUserRole, type CathaUserStatus } from '@/lib/models/catha-user'
 import { CathaPermissions, normalizePermissions } from '@/lib/catha-permissions-model'
 import { getPhoneValidationError, normalizeKenyaPhone } from '@/lib/phone-utils'
 
@@ -17,6 +17,7 @@ function formatUser(u: Awaited<ReturnType<typeof getAllCathaUsers>>[0]) {
     role: u.role,
     status: u.status,
     permissions: normalizePermissions(u.permissions ?? {}),
+    shopAssignments: u.shopAssignments ?? null,
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
     updatedAt: u.updatedAt instanceof Date ? u.updatedAt.toISOString() : u.updatedAt,
     lastLogin: u.lastLogin ? (u.lastLogin instanceof Date ? u.lastLogin.toISOString() : u.lastLogin) : null,
@@ -58,6 +59,13 @@ export async function PATCH(request: Request) {
       updates.permissions = basePermissions
     }
 
+    if (Array.isArray(body.shopAssignments)) {
+      const parsed = readCathaShopAssignments(body.shopAssignments) || []
+      const unique = new Map<string, CathaShopAssignment>()
+      for (const item of parsed) unique.set(item.shopId, item)
+      updates.shopAssignments = [...unique.values()]
+    }
+
     if (body.phoneNumber !== undefined) {
       const rawPhone = typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : ''
       const validationError = getPhoneValidationError(rawPhone)
@@ -69,7 +77,7 @@ export async function PATCH(request: Request) {
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No valid updates (status, role, permissions, or phoneNumber)' },
+        { success: false, error: 'No valid updates (status, role, permissions, phone, or shops)' },
         { status: 400 }
       )
     }

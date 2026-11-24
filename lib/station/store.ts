@@ -81,9 +81,6 @@ export async function createStation(
     name: string
     phone: string
     location: string
-    adminName: string
-    adminEmail: string
-    adminPin: string
   },
 ) {
   const name = input.name.trim()
@@ -113,17 +110,6 @@ export async function createStation(
     payment: 'shared-mpesa',
     createdAt: now,
   })
-  const placed = await placeStationPerson(db, {
-    name: input.adminName.trim() || name,
-    email: input.adminEmail,
-    pin: input.adminPin,
-    assignments: [{ shopId: slug, role: 'ADMIN' }],
-    mode: 'add',
-  })
-  if (!placed.ok) {
-    await db.collection(STATION.shops).deleteOne({ slug })
-    return placed
-  }
   return { ok: true as const, shop: await getStation(db, slug) }
 }
 

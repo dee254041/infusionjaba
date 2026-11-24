@@ -11,6 +11,20 @@ import { CathaPermissions, normalizePermissions } from '@/lib/catha-permissions-
 export type CathaUserRole = 'SUPER_ADMIN' | 'ADMIN' | 'CASHIER' | 'PENDING'
 export type CathaUserStatus = 'ACTIVE' | 'PENDING' | 'DISABLED'
 
+export type CathaShopAssignment = { shopId: string; role: 'ADMIN' | 'STAFF' }
+
+export function readCathaShopAssignments(value: unknown): CathaShopAssignment[] | null {
+  if (!Array.isArray(value)) return null
+  const shops: CathaShopAssignment[] = []
+  for (const item of value) {
+    const shopId = String((item as { shopId?: string })?.shopId || '')
+    const role = (item as { role?: string })?.role
+    if (!shopId || (role !== 'ADMIN' && role !== 'STAFF')) continue
+    shops.push({ shopId, role })
+  }
+  return shops
+}
+
 export interface CathaUser {
   _id?: ObjectId
   email: string
@@ -20,6 +34,8 @@ export interface CathaUser {
   role: CathaUserRole
   status: CathaUserStatus
   permissions: CathaPermissions
+  /** Missing means this person stays on Catha Lounge only. An array is the exact shop list. */
+  shopAssignments?: CathaShopAssignment[] | null
   createdAt: Date
   updatedAt: Date
   lastLogin?: Date
@@ -46,6 +62,7 @@ export async function getCathaUserByEmail(email: string): Promise<CathaUser | nu
     role: (doc.role ?? 'PENDING') as CathaUserRole,
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
+    shopAssignments: readCathaShopAssignments(doc.shopAssignments),
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -70,6 +87,7 @@ export async function getCathaUserById(id: string): Promise<CathaUser | null> {
     role: (doc.role ?? 'PENDING') as CathaUserRole,
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
+    shopAssignments: readCathaShopAssignments(doc.shopAssignments),
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -113,7 +131,7 @@ export async function createCathaUser(data: {
 
 export async function updateCathaUser(
   email: string,
-  updates: Partial<Pick<CathaUser, 'role' | 'status' | 'permissions' | 'name' | 'image' | 'phoneNumber'>>
+  updates: Partial<Pick<CathaUser, 'role' | 'status' | 'permissions' | 'name' | 'image' | 'phoneNumber' | 'shopAssignments'>>
 ): Promise<CathaUser | null> {
   const client = await clientPromise
   const $set: Record<string, unknown> = { ...updates, updatedAt: new Date() }
@@ -132,6 +150,7 @@ export async function updateCathaUser(
     role: (doc.role ?? 'PENDING') as CathaUserRole,
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
+    shopAssignments: readCathaShopAssignments(doc.shopAssignments),
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,
@@ -159,6 +178,7 @@ export async function getAllCathaUsers(): Promise<CathaUser[]> {
     role: (doc.role ?? 'PENDING') as CathaUserRole,
     status: (doc.status ?? 'PENDING') as CathaUserStatus,
     permissions: normalizePermissions(doc.permissions),
+    shopAssignments: readCathaShopAssignments(doc.shopAssignments),
     createdAt: doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt),
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt : new Date(doc.updatedAt),
     lastLogin: doc.lastLogin ? (doc.lastLogin instanceof Date ? doc.lastLogin : new Date(doc.lastLogin)) : undefined,

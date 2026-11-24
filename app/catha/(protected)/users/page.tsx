@@ -14,6 +14,7 @@ export default async function CathaUsersPage() {
     role: u.role,
     status: u.status,
     permissions: u.permissions ?? [],
+    shopAssignments: u.shopAssignments ?? null,
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
     lastLogin: u.lastLogin ? (u.lastLogin instanceof Date ? u.lastLogin.toISOString() : String(u.lastLogin)) : null,
   }))

@@ -75,6 +75,7 @@ import {
   CATHA_AUTH_ME_REFRESH_EVENT,
 } from '@/lib/catha-permissions-model'
 import { formatPhoneDisplay, getPhoneValidationError } from '@/lib/phone-utils'
+import { assignmentsFromRoles, ShopAssignmentPicker, type ShopChoice, type ShopRole } from '@/components/catha/shop-assignment-picker'
 
 type CathaUserRole = 'SUPER_ADMIN' | 'ADMIN' | 'CASHIER' | 'PENDING'
 type CathaUserStatus = 'ACTIVE' | 'PENDING' | 'DISABLED'
@@ -91,6 +92,7 @@ type CathaUser = {
   createdAt: string
   lastLogin: string | null
   hasPin?: boolean
+  shopAssignments?: { shopId: string; role: 'ADMIN' | 'STAFF' }[] | null
 }
 
 const ROLE_OPTIONS = [
@@ -174,6 +176,30 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
   const [phoneValue, setPhoneValue] = useState('')
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [phoneSubmitting, setPhoneSubmitting] = useState(false)
+  const [shopChoices, setShopChoices] = useState<ShopChoice[]>([{ id: 'catha', name: 'Catha Lounge' }])
+  const [shopRoles, setShopRoles] = useState<Record<string, ShopRole>>({})
+
+  useEffect(() => {
+    fetch('/api/catha/stations', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        const extra = Array.isArray(data?.shops)
+          ? data.shops.filter((shop: { active?: boolean }) => shop.active !== false).map((shop: { slug: string; name: string }) => ({ id: shop.slug, name: shop.name }))
+          : []
+        setShopChoices([{ id: 'catha', name: 'Catha Lounge' }, ...extra])
+      })
+      .catch(() => {})
+  }, [])
+
+  const rolesFor = (user: CathaUser): Record<string, ShopRole> => {
+    const next: Record<string, ShopRole> = {}
+    if (user.shopAssignments) {
+      for (const item of user.shopAssignments) next[item.shopId] = item.role
+      return next
+    }
+    next.catha = user.role === 'CASHIER' ? 'STAFF' : 'ADMIN'
+    return next
+  }
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -283,7 +309,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
 
   async function patchUser(
     email: string,
-    updates: Partial<Pick<CathaUser, 'role' | 'status' | 'permissions' | 'phoneNumber'>>
+    updates: Partial<Pick<CathaUser, 'role' | 'status' | 'permissions' | 'phoneNumber' | 'shopAssignments'>>
   ): Promise<boolean> {
     setUpdating(email)
     try {
@@ -306,6 +332,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
                 status: (updated.status || u.status) as CathaUserStatus,
                 permissions: normalizePermissions(updated.permissions),
                 phoneNumber: updated.phoneNumber ?? null,
+                shopAssignments: (updated as CathaUser).shopAssignments ?? u.shopAssignments ?? null,
               }
             : u
         )
@@ -332,6 +359,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
     setSelectedRoleTemplate(null)
     setShowAdvancedPermissions(false)
     setEditingPermissions(normalizePermissions(user.permissions))
+    setShopRoles(rolesFor(user))
     setIsApproveModalOpen(true)
   }
 
@@ -344,6 +372,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
         ? normalizePermissions(ROLE_TEMPLATES.SUPER_ADMIN)
         : normalizePermissions(user.permissions)
     setEditingPermissions(base)
+    setShopRoles(rolesFor(user))
     setIsPermissionsModalOpen(true)
   }
 
@@ -360,6 +389,7 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
         role: selectedRoleTemplate,
         status: 'ACTIVE',
         permissions: editingPermissions,
+        shopAssignments: selectedRoleTemplate === 'SUPER_ADMIN' ? [] : assignmentsFromRoles(shopRoles),
       })
       if (!ok) return
       toast.success('User approved successfully')
@@ -377,7 +407,10 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
     if (!selectedUser) return
     setUpdating(selectedUser.email)
     try {
-      const ok = await patchUser(selectedUser.email, { permissions: editingPermissions })
+      const ok = await patchUser(selectedUser.email, {
+        permissions: editingPermissions,
+        shopAssignments: selectedUser.role === 'SUPER_ADMIN' ? [] : assignmentsFromRoles(shopRoles),
+      })
       if (!ok) return
       toast.success('Permissions updated successfully')
       setIsPermissionsModalOpen(false)
@@ -936,6 +969,10 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
               </div>
             </div>
 
+            {selectedRoleTemplate && selectedRoleTemplate !== 'SUPER_ADMIN' && (
+              <ShopAssignmentPicker shops={shopChoices} value={shopRoles} onChange={setShopRoles} />
+            )}
+
             {selectedRoleTemplate && (
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -998,7 +1035,10 @@ export function CathaUsersClient({ initialUsers }: { initialUsers: UserRow[] }) 
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 space-y-4">
+            {selectedUser?.role !== 'SUPER_ADMIN' ? (
+              <ShopAssignmentPicker shops={shopChoices} value={shopRoles} onChange={setShopRoles} />
+            ) : null}
             <PermissionsList
               permissions={editingPermissions}
               setPermissions={setEditingPermissions}

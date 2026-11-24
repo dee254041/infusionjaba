@@ -14,9 +14,6 @@ export function CathaLoginForm({ callbackUrl, error }: { callbackUrl: string; er
   const [mode, setMode] = useState<Mode>('admin')
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
-  const [shopEmail, setShopEmail] = useState('')
-  const [shopPin, setShopPin] = useState('')
-  const [shopError, setShopError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const pinInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -115,49 +112,8 @@ export function CathaLoginForm({ callbackUrl, error }: { callbackUrl: string; er
             Sign in with Google
           </button>
           <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-            Use your Google account for full admin and staff access.
+            Use your Google account. A super admin then assigns your shop on Users.
           </p>
-          <form
-            className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800"
-            onSubmit={async (event) => {
-              event.preventDefault()
-              setShopError(null)
-              setSubmitting(true)
-              try {
-                const res = await fetch('/api/catha/shop-login', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: shopEmail, pin: shopPin }),
-                })
-                const data = await res.json()
-                if (!res.ok) {
-                  setShopError(data.error || 'Email or PIN is wrong.')
-                  return
-                }
-                window.location.href = '/catha'
-              } catch {
-                setShopError('Could not sign in.')
-              } finally {
-                setSubmitting(false)
-              }
-            }}
-          >
-            <p className="text-xs font-medium text-slate-700 dark:text-slate-200">Shop email and PIN</p>
-            <Input type="email" value={shopEmail} onChange={(event) => setShopEmail(event.target.value)} placeholder="Email" required />
-            <Input
-              inputMode="numeric"
-              maxLength={4}
-              value={shopPin}
-              onChange={(event) => setShopPin(event.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="4-digit PIN"
-              className="text-center tracking-[0.35em]"
-              required
-            />
-            {shopError ? <p className="text-xs text-red-600">{shopError}</p> : null}
-            <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? 'Signing in…' : 'Sign in to my shop'}
-            </Button>
-          </form>
         </TabsContent>
 
         <TabsContent value="cashier" className="mt-0">

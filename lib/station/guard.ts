@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { getCathaSession } from '@/lib/catha-auth'
-import { getCathaUserByEmail } from '@/lib/models/catha-user'
+import { getCathaUserByEmail, readCathaShopAssignments } from '@/lib/models/catha-user'
 import { decideShopAccess } from '@/lib/station/access'
 import { stationAuthSecret, stationCookieName, verifyStationToken, type StationSession } from '@/lib/station/token'
 
@@ -47,12 +47,25 @@ export async function canSeeAllStations(): Promise<boolean> {
   return Boolean(await readSuperAdminSession())
 }
 
+async function assignmentFromCathaUser(shopId: string): Promise<'ADMIN' | 'STAFF' | null> {
+  const session = await getCathaSession()
+  const email = session?.user?.email
+  if (!email) return null
+  const user = await getCathaUserByEmail(email)
+  if (!user || String(user.status || '').toUpperCase() !== 'ACTIVE') return null
+  if (String(user.role || '').toUpperCase() === 'SUPER_ADMIN') return 'ADMIN'
+  const assigned = readCathaShopAssignments(user.shopAssignments)
+  if (assigned == null) return shopId === 'catha' ? 'STAFF' : null
+  return assigned.find((item) => item.shopId === shopId)?.role ?? null
+}
+
 export async function requireStation(
   slug: string,
   minimum?: 'ADMIN',
 ): Promise<[StationSession, null] | [null, NextResponse]> {
   const own = await readStationSession(slug)
-  const assignment = own?.role === 'ADMIN' || own?.role === 'STAFF' ? own.role : null
+  const fromAccount = await assignmentFromCathaUser(slug)
+  const assignment = fromAccount || (own?.role === 'ADMIN' || own?.role === 'STAFF' ? own.role : null)
   const decision = decideShopAccess({
     requestedShopId: slug,
     isSuper: Boolean(await readSuperAdminSession()),
