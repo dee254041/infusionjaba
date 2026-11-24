@@ -25,12 +25,12 @@ describe('station session token', () => {
   it('round-trips and rejects another shop', async () => {
     const secret = 'test-station-secret'
     const token = await signStationToken(
-      { shopId: 'westlands-bar', userId: 'u1', role: 'OWNER', name: 'Asha' },
+      { shopId: 'westlands-bar', userId: 'u1', role: 'ADMIN', name: 'Asha' },
       secret,
     )
     const session = await verifyStationToken(token, secret)
     expect(session?.shopId).toBe('westlands-bar')
-    expect(session?.role).toBe('OWNER')
+    expect(session?.role).toBe('ADMIN')
     expect(await verifyStationToken(token, 'other-secret')).toBeNull()
   })
 })

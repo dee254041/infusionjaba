@@ -12,12 +12,12 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
   if (!slug || slug !== raw) return NextResponse.json({ error: 'Unknown shop.' }, { status: 404 })
   const body = await request.json().catch(() => null)
   const email = String(body?.email || '')
-  const password = String(body?.password || '')
+  const pin = String(body?.pin || '')
   const db = await stationDb()
-  const user = await verifyStationLogin(db, slug, email, password)
-  if (!user) return NextResponse.json({ error: 'Email or password is wrong for this shop.' }, { status: 401 })
-  const token = await signStationToken(user, stationAuthSecret())
-  const response = NextResponse.json({ ok: true, role: user.role, name: user.name })
+  const result = await verifyStationLogin(db, slug, email, pin)
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 401 })
+  const token = await signStationToken(result.user, stationAuthSecret())
+  const response = NextResponse.json({ ok: true, role: result.user.role, name: result.user.name })
   response.cookies.set(stationCookieName(slug), token, stationCookieOptions())
   return response
 }

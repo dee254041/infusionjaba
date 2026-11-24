@@ -42,7 +42,7 @@ export async function stationDb(): Promise<Db> {
 }
 
 async function ensureStationIndexes(db: Db) {
-  await db.collection(STATION.users).createIndex({ shopId: 1, email: 1 }, { unique: true })
+  await db.collection(STATION.users).createIndex({ email: 1 }, { unique: true })
   await db.collection(STATION.products).createIndex({ shopId: 1, id: 1 }, { unique: true })
   await db.collection(STATION.orders).createIndex({ shopId: 1, id: 1 }, { unique: true })
   await db.collection(STATION.orders).createIndex({ id: 1 }, { unique: true })
@@ -82,20 +82,15 @@ export async function createStation(
     slug: string
     phone: string
     location: string
-    ownerName: string
-    ownerEmail: string
-    ownerPassword: string
+    adminName: string
+    adminEmail: string
+    adminPin: string
   },
 ) {
   const slug = normalizeStationSlug(input.slug || input.name)
   const name = input.name.trim()
-  const email = input.ownerEmail.trim().toLowerCase()
   if (!slug) return { ok: false as const, error: 'Choose a shop address with 3 or more letters. Catha, menu, and table are reserved.' }
   if (name.length < 2 || name.length > 80) return { ok: false as const, error: 'Enter the shop name.' }
-  if (!email.includes('@') || email.length > 120) return { ok: false as const, error: 'Enter the owner email.' }
-  if (input.ownerPassword.length < 8 || input.ownerPassword.length > 200) {
-    return { ok: false as const, error: 'Owner password must be at least 8 characters.' }
-  }
   const existing = await db.collection(STATION.shops).findOne({ slug })
   if (existing) return { ok: false as const, error: 'That shop address is already in use.' }
 
@@ -110,16 +105,17 @@ export async function createStation(
     payment: 'shared-mpesa',
     createdAt: now,
   })
-  await db.collection(STATION.users).insertOne({
-    id: id('usr'),
-    shopId: slug,
-    name: input.ownerName.trim().slice(0, 80) || name,
-    email,
-    passwordHash: await bcrypt.hash(input.ownerPassword, 10),
-    role: 'OWNER' satisfies StationRole,
-    active: true,
-    createdAt: now,
+  const placed = await placeStationPerson(db, {
+    name: input.adminName.trim() || name,
+    email: input.adminEmail,
+    pin: input.adminPin,
+    assignments: [{ shopId: slug, role: 'ADMIN' }],
+    mode: 'add',
   })
+  if (!placed.ok) {
+    await db.collection(STATION.shops).deleteOne({ slug })
+    return placed
+  }
   return { ok: true as const, shop: await getStation(db, slug) }
 }
 
@@ -128,23 +124,131 @@ export async function setStationActive(db: Db, slug: string, active: boolean) {
   return res.matchedCount > 0
 }
 
-export async function verifyStationLogin(db: Db, slug: string, email: string, password: string) {
+function cleanPin(pin: string): string | null {
+  const value = String(pin || '').trim()
+  return /^\d{4}$/.test(value) ? value : null
+}
+
+type Assignment = { shopId: string; role: 'ADMIN' | 'STAFF' }
+
+function readAssignments(row: Record<string, unknown>): Assignment[] {
+  const raw = Array.isArray(row.assignments) ? row.assignments : []
+  return raw
+    .map((item) => {
+      const shopId = String((item as { shopId?: string }).shopId || '')
+      const role = (item as { role?: string }).role === 'ADMIN' ? 'ADMIN' : 'STAFF'
+      return shopId ? { shopId, role } : null
+    })
+    .filter((item): item is Assignment => Boolean(item))
+}
+
+export async function placeStationPerson(
+  db: Db,
+  input: { name: string; email: string; pin?: string; assignments: Assignment[]; mode?: 'replace' | 'add' },
+) {
+  const email = input.email.trim().toLowerCase()
+  const name = input.name.trim()
+  if (name.length < 2 || name.length > 80) return { ok: false as const, error: 'Enter the person\'s name.' }
+  if (!email.includes('@') || email.length > 120) return { ok: false as const, error: 'Enter a valid email.' }
+  const pin = input.pin ? cleanPin(input.pin) : null
+  if (input.pin && !pin) return { ok: false as const, error: 'PIN must be 4 digits.' }
+  const wanted = new Map<string, Assignment>()
+  for (const assignment of input.assignments) {
+    const shop = await db.collection(STATION.shops).findOne({ slug: assignment.shopId })
+    if (!shop) return { ok: false as const, error: 'Choose a station that exists.' }
+    wanted.set(assignment.shopId, {
+      shopId: assignment.shopId,
+      role: assignment.role === 'ADMIN' ? 'ADMIN' : 'STAFF',
+    })
+  }
+  const existing = await db.collection(STATION.users).findOne({ email })
+  if (!existing && !pin) return { ok: false as const, error: 'Set a 4-digit PIN for a new person.' }
+  let assignments = [...wanted.values()]
+  if (existing && input.mode === 'add') {
+    const merged = new Map(readAssignments(existing as Record<string, unknown>).map((item) => [item.shopId, item]))
+    for (const item of wanted.values()) merged.set(item.shopId, item)
+    assignments = [...merged.values()]
+  }
+  const now = new Date()
+  const set: Record<string, unknown> = {
+    name: name.slice(0, 80),
+    email,
+    assignments,
+    active: true,
+    updatedAt: now,
+  }
+  if (pin) {
+    set.pinHash = await bcrypt.hash(pin, 10)
+    set.pinFailedAttempts = 0
+    set.pinLockedUntil = null
+  }
+  if (existing) {
+    await db.collection(STATION.users).updateOne({ email }, { $set: set })
+  } else {
+    await db.collection(STATION.users).insertOne({
+      id: id('usr'),
+      ...set,
+      pinFailedAttempts: 0,
+      pinLockedUntil: null,
+      createdAt: now,
+    })
+  }
+  return { ok: true as const }
+}
+
+export async function listStationPeople(db: Db) {
+  const rows = await db.collection(STATION.users).find({}).sort({ name: 1 }).limit(300).toArray()
+  return rows.map((row) => ({
+    id: String(row.id || ''),
+    name: String(row.name || ''),
+    email: String(row.email || ''),
+    active: row.active !== false,
+    assignments: readAssignments(row as Record<string, unknown>),
+  }))
+}
+
+export async function verifyStationLogin(db: Db, slug: string, email: string, pin: string) {
   const shop = await db.collection(STATION.shops).findOne({ slug })
-  if (!shop || shop.active === false) return null
+  if (!shop || shop.active === false) return { ok: false as const, error: 'This station is not open.' }
+  const code = cleanPin(pin)
   const user = await db.collection(STATION.users).findOne({
-    shopId: slug,
     email: email.trim().toLowerCase(),
     active: { $ne: false },
   })
-  if (!user?.passwordHash) return null
-  const match = await bcrypt.compare(password, String(user.passwordHash))
-  if (!match) return null
-  const role: StationRole = user.role === 'OWNER' ? 'OWNER' : 'STAFF'
+  if (!user?.pinHash || !code) return { ok: false as const, error: 'Email or PIN is wrong for this station.' }
+  const lockedUntil = user.pinLockedUntil ? new Date(user.pinLockedUntil) : null
+  if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+    return { ok: false as const, error: 'Too many tries. Wait 15 minutes and use the PIN again.' }
+  }
+  const match = await bcrypt.compare(code, String(user.pinHash))
+  if (!match) {
+    const failures = Number(user.pinFailedAttempts || 0) + 1
+    await db.collection(STATION.users).updateOne(
+      { email: user.email },
+      {
+        $set: {
+          pinFailedAttempts: failures,
+          pinLockedUntil: failures >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null,
+        },
+      },
+    )
+    return { ok: false as const, error: 'Email or PIN is wrong for this station.' }
+  }
+  const assignment = readAssignments(user as Record<string, unknown>).find((item) => item.shopId === slug)
+  if (!assignment) return { ok: false as const, error: 'You are not placed on this station.' }
+  await db.collection(STATION.users).updateOne(
+    { email: user.email },
+    { $set: { pinFailedAttempts: 0, pinLockedUntil: null } },
+  )
+  const role: StationRole = assignment.role === 'ADMIN' ? 'ADMIN' : 'STAFF'
   return {
-    shopId: slug,
-    userId: String(user.id),
-    role,
-    name: String(user.name || email),
+    ok: true as const,
+    user: {
+      shopId: slug,
+      userId: String(user.id),
+      role,
+      name: String(user.name || email),
+    },
   }
 }
 
@@ -427,39 +531,17 @@ export async function addTable(db: Db, shopId: string, name: string) {
 }
 
 export async function listStaff(db: Db, shopId: string) {
-  const rows = await db.collection(STATION.users).find({ shopId }).sort({ createdAt: 1 }).toArray()
-  return rows.map((row) => ({
-    id: String(row.id),
-    name: String(row.name || ''),
-    email: String(row.email || ''),
-    role: row.role === 'OWNER' ? 'OWNER' : 'STAFF',
-    active: row.active !== false,
-  }))
-}
-
-export async function addStaff(
-  db: Db,
-  shopId: string,
-  input: { name: string; email: string; password: string; role: StationRole },
-) {
-  const email = input.email.trim().toLowerCase()
-  const name = input.name.trim()
-  if (name.length < 2) return { ok: false as const, error: 'Enter the staff name.' }
-  if (!email.includes('@')) return { ok: false as const, error: 'Enter a staff email.' }
-  if (input.password.length < 8) return { ok: false as const, error: 'Password must be at least 8 characters.' }
-  const taken = await db.collection(STATION.users).findOne({ shopId, email })
-  if (taken) return { ok: false as const, error: 'That email is already on this shop.' }
-  await db.collection(STATION.users).insertOne({
-    id: id('usr'),
-    shopId,
-    name: name.slice(0, 80),
-    email,
-    passwordHash: await bcrypt.hash(input.password, 10),
-    role: input.role === 'OWNER' ? 'OWNER' : 'STAFF',
-    active: true,
-    createdAt: new Date(),
+  const rows = await db.collection(STATION.users).find({ 'assignments.shopId': shopId }).sort({ name: 1 }).toArray()
+  return rows.map((row) => {
+    const assignment = readAssignments(row as Record<string, unknown>).find((item) => item.shopId === shopId)
+    return {
+      id: String(row.id || ''),
+      name: String(row.name || ''),
+      email: String(row.email || ''),
+      role: assignment?.role === 'ADMIN' ? 'ADMIN' : 'STAFF',
+      active: row.active !== false,
+    }
   })
-  return { ok: true as const }
 }
 
 type NoteRecord = { id: string; shopId: string; title: string; detail: string; amount?: number; createdAt: Date }

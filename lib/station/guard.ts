@@ -1,6 +1,8 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { stationAuthSecret, stationCookieName, verifyStationToken, type StationRole, type StationSession } from '@/lib/station/token'
+import { getCathaSession } from '@/lib/catha-auth'
+import { getCathaUserByEmail } from '@/lib/models/catha-user'
+import { stationAuthSecret, stationCookieName, verifyStationToken, type StationSession } from '@/lib/station/token'
 
 export async function readStationSession(slug: string): Promise<StationSession | null> {
   const jar = await cookies()
@@ -11,14 +13,30 @@ export async function readStationSession(slug: string): Promise<StationSession |
   return session
 }
 
+/** The Catha super admin is the one super admin for every station. */
+export async function readSuperStationSession(slug: string): Promise<StationSession | null> {
+  const session = await getCathaSession()
+  const email = session?.user?.email
+  if (!email) return null
+  const user = await getCathaUserByEmail(email)
+  if (String(user?.role || '').toUpperCase() !== 'SUPER_ADMIN') return null
+  return {
+    shopId: slug,
+    userId: 'super',
+    role: 'SUPER',
+    name: user?.name || 'Super admin',
+    exp: Date.now() + 60_000,
+  }
+}
+
 export async function requireStation(
   slug: string,
-  role?: StationRole,
+  minimum?: 'ADMIN',
 ): Promise<[StationSession, null] | [null, NextResponse]> {
-  const session = await readStationSession(slug)
+  const session = (await readStationSession(slug)) || (await readSuperStationSession(slug))
   if (!session) return [null, NextResponse.json({ error: 'Sign in to this shop.' }, { status: 401 })]
-  if (role === 'OWNER' && session.role !== 'OWNER') {
-    return [null, NextResponse.json({ error: 'Only the shop owner can do that.' }, { status: 403 })]
+  if (minimum === 'ADMIN' && session.role === 'STAFF') {
+    return [null, NextResponse.json({ error: 'Only this station admin can do that.' }, { status: 403 })]
   }
   return [session, null]
 }

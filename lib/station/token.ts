@@ -1,4 +1,4 @@
-export type StationRole = 'OWNER' | 'STAFF'
+export type StationRole = 'SUPER' | 'ADMIN' | 'STAFF'
 
 export type StationSession = {
   shopId: string
@@ -76,7 +76,7 @@ export async function verifyStationToken(token: string, secret: string, now = Da
     const json = new TextDecoder().decode(b64UrlToBytes(body))
     const payload = JSON.parse(json) as StationSession
     if (!payload?.shopId || !payload.userId || !payload.exp) return null
-    if (payload.role !== 'OWNER' && payload.role !== 'STAFF') return null
+    if (payload.role !== 'ADMIN' && payload.role !== 'STAFF' && payload.role !== 'SUPER') return null
     if (payload.exp < now) return null
     return payload
   } catch {

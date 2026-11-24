@@ -21,7 +21,7 @@ export function StationShell({ slug, children }: { slug: string; children: React
   const pathname = usePathname()
   const router = useRouter()
   const [shopName, setShopName] = useState(slug)
-  const [role, setRole] = useState<'OWNER' | 'STAFF' | ''>('')
+  const [role, setRole] = useState<'SUPER' | 'ADMIN' | 'STAFF' | ''>('')
 
   useEffect(() => {
     let cancelled = false
@@ -36,7 +36,7 @@ export function StationShell({ slug, children }: { slug: string; children: React
       .then((data) => {
         if (cancelled || !data?.shop) return
         setShopName(data.shop.name || slug)
-        setRole(data.me?.role === 'OWNER' ? 'OWNER' : 'STAFF')
+        setRole(data.me?.role === 'SUPER' || data.me?.role === 'ADMIN' || data.me?.role === 'STAFF' ? data.me.role : 'STAFF')
       })
       .catch(() => {})
     return () => {
@@ -60,7 +60,7 @@ export function StationShell({ slug, children }: { slug: string; children: React
           </a>
         </div>
         <nav className="flex gap-2 overflow-x-auto px-3 pb-3 md:block md:space-y-1 md:px-3">
-          {LINKS.filter((link) => !link.owner || role === 'OWNER').map((link) => {
+          {LINKS.filter((link) => !link.owner || role === 'ADMIN' || role === 'SUPER').map((link) => {
             const href = `/station/${slug}${link.href}`
             const active = pathname === href
             return (

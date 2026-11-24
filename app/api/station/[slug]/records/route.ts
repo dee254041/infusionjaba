@@ -18,7 +18,7 @@ function kindOf(request: Request) {
 
 export async function GET(request: Request, context: { params: Promise<{ slug: string }> }) {
   const { slug } = await context.params
-  const [, denied] = await requireStation(slug, 'OWNER')
+  const [, denied] = await requireStation(slug, 'ADMIN')
   if (denied) return denied
   const kind = kindOf(request)
   if (!kind) return NextResponse.json({ error: 'Unknown record type.' }, { status: 400 })
@@ -28,7 +28,7 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
 
 export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
   const { slug } = await context.params
-  const [, denied] = await requireStation(slug, 'OWNER')
+  const [, denied] = await requireStation(slug, 'ADMIN')
   if (denied) return denied
   const kind = kindOf(request)
   if (!kind) return NextResponse.json({ error: 'Unknown record type.' }, { status: 400 })

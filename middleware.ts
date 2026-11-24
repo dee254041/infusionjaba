@@ -185,6 +185,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url))
     }
     if (section !== "login") {
+      const cathaToken = await getTokenForApp(request, "catha")
+      if (String(cathaToken?.role || "").toUpperCase() === "SUPER_ADMIN") {
+        return NextResponse.next()
+      }
       const token = request.cookies.get(stationCookieName(slug))?.value || ""
       const session = await verifyStationToken(token, stationAuthSecret())
       if (!session || session.shopId !== slug) {

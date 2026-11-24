@@ -29,9 +29,9 @@ export async function POST(request: Request) {
     slug: String(body.slug || ''),
     phone: String(body.phone || ''),
     location: String(body.location || ''),
-    ownerName: String(body.ownerName || ''),
-    ownerEmail: String(body.ownerEmail || ''),
-    ownerPassword: String(body.ownerPassword || ''),
+    adminName: String(body.adminName || body.ownerName || ''),
+    adminEmail: String(body.adminEmail || body.ownerEmail || ''),
+    adminPin: String(body.adminPin || body.ownerPassword || ''),
   })
   if (!created.ok) return NextResponse.json({ error: created.error }, { status: 400 })
   return NextResponse.json({ shop: created.shop })
