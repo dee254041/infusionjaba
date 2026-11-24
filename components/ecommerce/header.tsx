@@ -169,7 +169,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between md:h-20">
           {/* Logo */}
-          <Link href="/" className="flex min-w-0 items-center py-1">
+          <Link prefetch={false} href="/" className="flex min-w-0 items-center py-1">
             <SiteLogo
               priority
               className="h-12 w-[168px] md:h-16 md:w-[230px] lg:w-[260px]"
@@ -179,7 +179,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-            <Link
+            <Link prefetch={false}
               href="/shop"
               className={cn(
                 "text-sm font-semibold transition-colors relative group",
@@ -192,7 +192,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
                 isShopActive ? "w-full" : "w-0 group-hover:w-full"
               )} />
             </Link>
-            <Link
+            <Link prefetch={false}
               href="/shop?category=infused-jaba"
               className={cn(
                 "text-sm font-semibold transition-colors relative group",
@@ -205,7 +205,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
                 isJabaActive ? "w-full" : "w-0 group-hover:w-full"
               )} />
             </Link>
-            <Link
+            <Link prefetch={false}
               href="/account"
               className={cn(
                 "text-sm font-semibold transition-colors relative group",
@@ -320,7 +320,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
             </Button>
 
             {/* Cart */}
-            <Link href="/cart" className="hidden md:block">
+            <Link prefetch={false} href="/cart" className="hidden md:block">
               <Button
                 variant="ghost"
                 size="icon"
@@ -339,7 +339,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
             {/* Logged-in user indicator — visible across all e-commerce pages for tracking/debugging */}
             <div className="hidden md:flex items-center" title={userDisplay ? `Logged in as ${userDisplay}` : "Not signed in"}>
               {userDisplay ? (
-                <Link href="/account">
+                <Link prefetch={false} href="/account">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--brand-green)]/10 border border-[var(--brand-green)]/30 hover:bg-[var(--brand-green)]/15 transition-colors">
                     <Phone className="h-3.5 w-3.5 text-[var(--brand-green)] shrink-0" />
                     <span className="text-xs font-semibold text-[#1F2937] max-w-[120px] truncate">
@@ -357,7 +357,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
             {/* Mobile menu trigger removed to keep top bar as utility header */}
 
             {/* Desktop account only */}
-            <Link href="/account" className={cn("hidden md:block", userDisplay ? "md:hidden" : "")}>
+            <Link prefetch={false} href="/account" className={cn("hidden md:block", userDisplay ? "md:hidden" : "")}>
               <Button
                 variant="ghost"
                 size="icon"
@@ -518,7 +518,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
 
                 {/* Menu Items */}
                 <div className="p-3 bg-gradient-to-b from-white to-[#F0FDF4]/20">
-                  <Link
+                  <Link prefetch={false}
                     href="/"
                     className="flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-gradient-to-r hover:from-[#10B981]/10 hover:to-transparent border-2 border-gray-200 hover:border-[#10B981] transition-all duration-200 group bg-white/90"
                     onClick={() => setMobileMenuOpen(false)}
@@ -535,7 +535,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
                     </svg>
                   </Link>
 
-                  <Link
+                  <Link prefetch={false}
                     href="/shop"
                     className="flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-gradient-to-r hover:from-[#10B981]/10 hover:to-transparent border-2 border-gray-200 hover:border-[#10B981] transition-all duration-200 group bg-white/90"
                     onClick={() => setMobileMenuOpen(false)}
@@ -552,7 +552,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
                     </svg>
                   </Link>
 
-                  <Link
+                  <Link prefetch={false}
                     href="/shop?category=infused-jaba"
                     className="flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-gradient-to-r hover:from-[#10B981]/10 hover:to-transparent border-2 border-gray-200 hover:border-[#10B981] transition-all duration-200 group bg-white/90"
                     onClick={() => setMobileMenuOpen(false)}
@@ -569,7 +569,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
                     </svg>
                   </Link>
 
-                  <Link
+                  <Link prefetch={false}
                     href="/account"
                     className="flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-gradient-to-r hover:from-[#10B981]/10 hover:to-transparent border-2 border-gray-200 hover:border-[#10B981] transition-all duration-200 group bg-white/90"
                     onClick={() => setMobileMenuOpen(false)}
@@ -586,7 +586,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
                     </svg>
                   </Link>
 
-                  <Link
+                  <Link prefetch={false}
                     href="/track"
                     className="flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-gradient-to-r hover:from-[#10B981]/10 hover:to-transparent border-2 border-gray-200 hover:border-[#10B981] transition-all duration-200 group bg-white/90"
                     onClick={() => setMobileMenuOpen(false)}
@@ -617,7 +617,7 @@ function EcommerceHeaderContent({ cartCount = 0 }: HeaderProps) {
         >
           <div className="grid grid-cols-4 gap-1.5">
               {mobileNavItems.map((item) => (
-                <Link
+                <Link prefetch={false}
                   key={item.label}
                   href={item.href}
                   className={cn(
@@ -658,7 +658,7 @@ function EcommerceHeaderFallback({ cartCount = 0 }: HeaderProps) {
     <header className="relative z-50 w-full border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl supports-[backdrop-filter]:bg-white/90 shadow-sm md:sticky md:top-0">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between md:h-20">
-          <Link href="/" className="flex items-center gap-3">
+          <Link prefetch={false} href="/" className="flex items-center gap-3">
             <SiteLogo
               className="h-12 w-[168px] md:h-16 md:w-[230px]"
               imageClassName="drop-shadow-[0_7px_16px_rgba(0,0,0,0.24)]"
@@ -666,7 +666,7 @@ function EcommerceHeaderFallback({ cartCount = 0 }: HeaderProps) {
           </Link>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Link href="/cart">
+            <Link prefetch={false} href="/cart">
               <Button
                 variant="ghost"
                 size="icon"

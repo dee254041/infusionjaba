@@ -325,7 +325,7 @@ export function Sidebar() {
               const isActive = pathname === item.href || (item.href !== "/catha" && pathname.startsWith(item.href))
               const prefetchApi = item.href === "/catha/pos" ? "/api/catha/inventory" : item.href === "/catha/orders" ? "/api/catha/orders" : null
               return (
-                <Link
+                <Link prefetch={false}
                   key={item.name}
                   href={item.href}
                   onMouseEnter={prefetchApi ? () => debouncedPrefetch(prefetchApi) : undefined}
@@ -348,7 +348,7 @@ export function Sidebar() {
                   {CATHA_SUPER_ADMIN_NAV_ITEMS.map((item) => {
                     const isActive = pathname === item.href || pathname?.startsWith(item.href + '/')
                     return (
-                      <Link key={item.name} href={item.href} className={cn(
+                      <Link prefetch={false} key={item.name} href={item.href} className={cn(
                         "group flex items-center gap-3 rounded-xl px-3 py-2.5 font-medium transition-all duration-200",
                         isActive ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm" : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground/90",
                       )}>
@@ -400,7 +400,7 @@ export function Sidebar() {
                     const isActive = pathname === item.href || (item.href !== "/catha" && pathname.startsWith(item.href))
                     const prefetchApi = item.href === "/catha/pos" ? "/api/catha/inventory" : item.href === "/catha/orders" ? "/api/catha/orders" : null
                     return (
-                      <Link
+                      <Link prefetch={false}
                         key={item.name}
                         href={item.href}
                         onMouseEnter={prefetchApi ? () => debouncedPrefetch(prefetchApi) : undefined}
@@ -426,7 +426,7 @@ export function Sidebar() {
                     {CATHA_SUPER_ADMIN_NAV_ITEMS.map((item) => {
                       const isActive = pathname === item.href || pathname?.startsWith(item.href + '/')
                       return (
-                        <Link key={item.name} href={item.href} onClick={() => isDrawerMode && setIsOpen(false)}
+                        <Link prefetch={false} key={item.name} href={item.href} onClick={() => isDrawerMode && setIsOpen(false)}
                           className={cn(
                             "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                             isActive ? "bg-[#ecfdf5] text-[#059669] border-l-[3px] border-l-primary pl-[9px]" : "text-[#475569] hover:bg-[#f8fafc] hover:text-[#0f172a]"

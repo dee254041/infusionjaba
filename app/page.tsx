@@ -269,13 +269,13 @@ export default function HomePage() {
 
               {/* CTA Buttons */}
               <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
-                <Link href="/shop">
+                <Link prefetch={false} href="/shop">
                   <Button size="lg" className="w-full sm:w-auto rounded-xl px-7 h-11 text-sm font-semibold bg-[#f3e4c1] text-[#221716] shadow-lg hover:bg-[color-mix(in_srgb,#f3e4c1_82%,var(--brand-green)_18%)] hover:text-[var(--brand-green-strong)] transition-all hover:scale-[1.02] focus-visible:ring-[var(--brand-green)]/40">
                     Shop Spirits
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </Link>
-                <Link href="/shop?category=infused-jaba">
+                <Link prefetch={false} href="/shop?category=infused-jaba">
                   <Button
                     variant="outline"
                     size="lg"
@@ -299,7 +299,7 @@ export default function HomePage() {
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 {QUICK_SHOP.map((item) => (
-                  <Link
+                  <Link prefetch={false}
                     key={item.id}
                     href={item.query ? `/shop?${item.query}` : `/shop?category=${item.id}`}
                     className="group relative h-24 overflow-hidden rounded-2xl border border-[#3a2f2a] shadow-[0_8px_20px_rgba(0,0,0,0.2)] sm:h-28"
@@ -326,7 +326,7 @@ export default function HomePage() {
                 <h2 className="text-3xl font-bold text-[#2a1f1b] sm:text-4xl mb-3 font-heading">Featured Products</h2>
                 <p className="text-[#6f6257]">Editorial picks from our bottle room</p>
               </div>
-              <Link href="/shop?featured=true">
+              <Link prefetch={false} href="/shop?featured=true">
                 <Button variant="outline" className="hidden sm:flex rounded-xl border-[var(--brand-border-beige)] text-[#5e4724] hover:border-[var(--brand-green)]/45 hover:text-[var(--brand-green-strong)] hover:bg-[var(--brand-green)]/10">
                   View All <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -354,7 +354,7 @@ export default function HomePage() {
                 <h2 className="text-3xl font-bold text-[#2a1f1b] sm:text-4xl mb-3 font-heading">Trending Now</h2>
                 <p className="text-[#6f6257]">Fast-moving bottles this week</p>
               </div>
-              <Link href="/shop?sort=trending">
+              <Link prefetch={false} href="/shop?sort=trending">
                 <Button variant="outline" className="hidden sm:flex rounded-xl border-[var(--brand-border-beige)] text-[#5e4724] hover:border-[var(--brand-green)]/45 hover:text-[var(--brand-green-strong)] hover:bg-[var(--brand-green)]/10">
                   View All <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -391,7 +391,7 @@ export default function HomePage() {
                   <h2 className="text-3xl font-bold text-[#f2e4c5] sm:text-4xl mb-2 font-heading">Jaba Collection</h2>
                   <p className="text-[#cdbda2]">Signature house infusions and exclusive lounge blends</p>
                 </div>
-                <Link href="/shop?category=infused-jaba">
+                <Link prefetch={false} href="/shop?category=infused-jaba">
                   <Button variant="outline" className="hidden sm:flex rounded-xl border-[var(--brand-green)]/40 text-[#f2e4c5] hover:bg-[var(--brand-green)]/15">
                     Browse Collection <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -450,10 +450,10 @@ export default function HomePage() {
                   <ChevronDown className="h-4 w-4 text-[var(--brand-green)] transition-transform group-open:rotate-180" />
                 </summary>
                 <div className="pb-3 text-sm text-[#ccbda3] space-y-2">
-                  <Link href="/shop" className="block hover:text-[var(--brand-green)] transition-colors">All Products</Link>
-                  <Link href="/shop?category=wines" className="block hover:text-[var(--brand-green)] transition-colors">Wines</Link>
-                  <Link href="/shop?category=spirits" className="block hover:text-[var(--brand-green)] transition-colors">Spirits</Link>
-                  <Link href="/shop?category=liquor" className="block hover:text-[var(--brand-green)] transition-colors">Liquor</Link>
+                  <Link prefetch={false} href="/shop" className="block hover:text-[var(--brand-green)] transition-colors">All Products</Link>
+                  <Link prefetch={false} href="/shop?category=wines" className="block hover:text-[var(--brand-green)] transition-colors">Wines</Link>
+                  <Link prefetch={false} href="/shop?category=spirits" className="block hover:text-[var(--brand-green)] transition-colors">Spirits</Link>
+                  <Link prefetch={false} href="/shop?category=liquor" className="block hover:text-[var(--brand-green)] transition-colors">Liquor</Link>
                 </div>
               </details>
 
@@ -463,8 +463,8 @@ export default function HomePage() {
                   <ChevronDown className="h-4 w-4 text-[var(--brand-green)] transition-transform group-open:rotate-180" />
                 </summary>
                 <div className="pb-3 text-sm text-[#ccbda3] space-y-2">
-                  <Link href="/supplier" className="block hover:text-[var(--brand-green)] transition-colors">Become a Supplier</Link>
-                  <Link href="/jaba-distributor" className="block hover:text-[var(--brand-green)] transition-colors">Distributor Program</Link>
+                  <Link prefetch={false} href="/supplier" className="block hover:text-[var(--brand-green)] transition-colors">Become a Supplier</Link>
+                  <Link prefetch={false} href="/jaba-distributor" className="block hover:text-[var(--brand-green)] transition-colors">Distributor Program</Link>
                 </div>
               </details>
 
@@ -516,17 +516,17 @@ export default function HomePage() {
               <div>
                 <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-green)]">Shop</h4>
                 <ul className="space-y-2 text-[#d8ccb7]">
-                  <li><Link href="/shop" className="hover:text-[var(--brand-green)] transition-colors">All Products</Link></li>
-                  <li><Link href="/shop?category=wines" className="hover:text-[var(--brand-green)] transition-colors">Wines</Link></li>
-                  <li><Link href="/shop?category=spirits" className="hover:text-[var(--brand-green)] transition-colors">Spirits</Link></li>
-                  <li><Link href="/shop?category=liquor" className="hover:text-[var(--brand-green)] transition-colors">Liquor</Link></li>
+                  <li><Link prefetch={false} href="/shop" className="hover:text-[var(--brand-green)] transition-colors">All Products</Link></li>
+                  <li><Link prefetch={false} href="/shop?category=wines" className="hover:text-[var(--brand-green)] transition-colors">Wines</Link></li>
+                  <li><Link prefetch={false} href="/shop?category=spirits" className="hover:text-[var(--brand-green)] transition-colors">Spirits</Link></li>
+                  <li><Link prefetch={false} href="/shop?category=liquor" className="hover:text-[var(--brand-green)] transition-colors">Liquor</Link></li>
                 </ul>
               </div>
               <div>
                 <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-green)]">Business</h4>
                 <ul className="space-y-2 text-[#d8ccb7]">
-                  <li><Link href="/supplier" className="hover:text-[var(--brand-green)] transition-colors">Become a Supplier</Link></li>
-                  <li><Link href="/jaba-distributor" className="hover:text-[var(--brand-green)] transition-colors">Distributor Program</Link></li>
+                  <li><Link prefetch={false} href="/supplier" className="hover:text-[var(--brand-green)] transition-colors">Become a Supplier</Link></li>
+                  <li><Link prefetch={false} href="/jaba-distributor" className="hover:text-[var(--brand-green)] transition-colors">Distributor Program</Link></li>
                 </ul>
               </div>
               <div>

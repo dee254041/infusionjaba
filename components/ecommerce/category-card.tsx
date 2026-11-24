@@ -12,7 +12,7 @@ interface CategoryCardProps {
 
 export function CategoryCard({ category }: CategoryCardProps) {
   return (
-    <Link
+    <Link prefetch={false}
       href={`/shop?category=${category.id}`}
       className="group relative flex flex-col rounded-xl sm:rounded-2xl overflow-hidden hover-lift bg-[#1b1513] border border-[#3a2f2a] shadow-[0_10px_28px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all duration-200 touch-manipulation"
     >

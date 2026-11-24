@@ -410,9 +410,11 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Public pages and APIs are included so the server switch can take the site offline.
-     * /server stays reachable while the public site is offline, and only that page gets the extra lock-down headers.
+     * Pages stay behind the off switch and the staff login checks.
+     * API routes are left out: they already check their own login, and running this
+     * on every order/stock poll was a large share of Edge CPU. A new visit still
+     * cannot load the site while it is off. Static files never start this function.
      */
-    "/((?!_next/static|_next/image|favicon.ico|icon.png).*)",
+    "/((?!api(?:/|$)|_next/static|_next/image|favicon.ico|icon.png|.*\\.(?:png|jpe?g|gif|webp|svg|ico|css|js|map|txt|xml|woff2?)$).*)",
   ],
 }

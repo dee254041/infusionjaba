@@ -569,7 +569,7 @@ function JabaLayoutContent({
                           {group.items.map((item) => {
                             const isActive = isJabaNavItemActive(pathname, item.href)
                             return (
-                              <Link
+                              <Link prefetch={false}
                                 key={item.name}
                                 href={item.href}
                                 className={cn(
@@ -629,7 +629,7 @@ function JabaLayoutContent({
                         {group.items.map((item) => {
                           const isActive = isJabaNavItemActive(pathname, item.href)
                           return (
-                            <Link
+                            <Link prefetch={false}
                               key={item.name}
                               href={item.href}
                               className={cn(
@@ -693,7 +693,7 @@ function JabaLayoutContent({
                 <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#94a3b8]">
                   Intelligence
                 </p>
-                <Link
+                <Link prefetch={false}
                   href="/jaba/ai-intelligence"
                   onClick={() => isMobile && setSidebarOpen(false)}
                   className={cn(
