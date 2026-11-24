@@ -30,6 +30,17 @@ export async function readCathaStationSession(slug: string): Promise<StationSess
   }
 }
 
+export async function readAnyStationSession(): Promise<StationSession | null> {
+  const jar = await cookies()
+  const secret = stationAuthSecret()
+  for (const cookie of jar.getAll()) {
+    if (!cookie.name.startsWith('station.') || !cookie.name.endsWith('.session')) continue
+    const session = await verifyStationToken(cookie.value, secret)
+    if (session) return session
+  }
+  return null
+}
+
 /** A station admin can open the other stations. Staff cannot. */
 export async function readAnyStationAdmin(): Promise<StationSession | null> {
   const jar = await cookies()
@@ -41,6 +52,8 @@ export async function readAnyStationAdmin(): Promise<StationSession | null> {
   }
   return null
 }
+
+export const CATHA_SHOP_COOKIE = 'catha_shop_id'
 
 export async function canSeeAllStations(): Promise<boolean> {
   if (await readCathaStationSession('catha')) return true

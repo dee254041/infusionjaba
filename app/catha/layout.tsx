@@ -2,15 +2,21 @@
 
 import { Sidebar } from "@/components/layout/sidebar"
 import { useEffect } from "react"
+import { usePathname } from "next/navigation"
 
 export default function CathaLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const pathname = usePathname() || ""
   useEffect(() => {
     document.title = "Catha Lounge | Restaurant & Bar"
   }, [])
+
+  if (pathname === "/catha/menu" || pathname.startsWith("/catha/menu/")) {
+    return <div className="min-h-screen bg-[#f6f3ee]">{children}</div>
+  }
 
   return (
     <div className="flex h-screen min-h-0 bg-background overflow-x-hidden">

@@ -4,8 +4,7 @@ import { getToken } from "next-auth/jwt"
 import { isPublicSiteOnline } from "@/lib/public-site-online"
 import { unreachableResponse } from "@/lib/server-unreachable"
 import { applyControlHeaders } from "@/lib/server-control-guard"
-import { normalizeStationSlug } from "@/lib/station/slug"
-import { stationAuthSecret, stationCookieName, verifyStationToken } from "@/lib/station/token"
+import { stationAuthSecret, verifyStationToken } from "@/lib/station/token"
 
 const mwDebug = process.env.MIDDLEWARE_DEBUG === "1"
 
@@ -177,35 +176,18 @@ export async function middleware(request: NextRequest) {
   const online = await isPublicSiteOnline(request.url)
   if (!online) return unreachableResponse()
 
-  if (pathname.startsWith("/station/")) {
-    const slug = pathname.split("/")[2] || ""
-    const section = pathname.split("/")[3] || ""
-    const safeSlug = normalizeStationSlug(slug)
-    if (!safeSlug || safeSlug !== slug) {
-      return NextResponse.redirect(new URL("/", request.url))
-    }
-    if (section !== "login") {
-      const cathaToken = await getTokenForApp(request, "catha")
-      const cathaRole = String(cathaToken?.role || "").toUpperCase()
-      if (cathaRole === "SUPER_ADMIN" || cathaRole === "ADMIN") {
-        return NextResponse.next()
-      }
-      const token = request.cookies.get(stationCookieName(slug))?.value || ""
-      const session = await verifyStationToken(token, stationAuthSecret())
-      if (session && session.shopId === slug) {
-        return NextResponse.next()
-      }
-      const secret = stationAuthSecret()
-      for (const cookie of request.cookies.getAll()) {
-        if (!cookie.name.startsWith("station.") || !cookie.name.endsWith(".session")) continue
-        const other = await verifyStationToken(cookie.value, secret)
-        if (other?.role === "ADMIN") return NextResponse.next()
-      }
-      const url = new URL(`/station/${slug}/login`, request.url)
-      url.searchParams.set("callbackUrl", pathname)
+  if (pathname === "/station" || pathname.startsWith("/station/")) {
+    return NextResponse.redirect(new URL("/catha", request.url))
+  }
+  if (pathname.startsWith("/menu/") && !pathname.startsWith("/menu/table")) {
+    const shopId = pathname.split("/")[2] || ""
+    if (shopId && !shopId.includes(".")) {
+      const url = new URL("/catha/menu", request.url)
+      url.searchParams.set("id", shopId)
+      const table = request.nextUrl.searchParams.get("t")
+      if (table) url.searchParams.set("t", table)
       return NextResponse.redirect(url)
     }
-    return NextResponse.next()
   }
 
   // ─── Local offline dev bypass for Jaba routes ───
@@ -218,11 +200,19 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/catha") && !pathname.startsWith("/api")) {
     const allowed =
       pathname === "/catha/login" ||
+      pathname === "/catha/menu" ||
+      pathname.startsWith("/catha/menu/") ||
       pathname === "/catha/waiting" ||
       pathname === "/catha/access-denied" ||
       pathname === "/catha/disabled" ||
       pathname.startsWith("/catha/public/")
     if (allowed) return NextResponse.next()
+    const stationSecret = stationAuthSecret()
+    for (const cookie of request.cookies.getAll()) {
+      if (!cookie.name.startsWith("station.") || !cookie.name.endsWith(".session")) continue
+      const stationSession = await verifyStationToken(cookie.value, stationSecret)
+      if (stationSession) return NextResponse.next()
+    }
     const hasCathaSession = hasSession(request.cookies, 'catha')
     if (!hasCathaSession) {
       const url = new URL("/catha/login", request.url)

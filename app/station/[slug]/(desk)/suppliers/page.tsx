@@ -3,7 +3,10 @@
 import { useParams } from 'next/navigation'
 import { RecordScreen } from '@/components/station/record-screen'
 
-export default function StationSuppliersPage() {
-  const slug = useParams<{ slug: string }>().slug
-  return <RecordScreen slug={slug} kind="suppliers" title="Suppliers" />
+export function StationSuppliers({ shopId }: { shopId: string }) {
+  return <RecordScreen slug={shopId} kind="suppliers" title="Suppliers" />
+}
+
+export default function Page() {
+  return <StationSuppliers shopId={useParams<{ slug: string }>().slug} />
 }

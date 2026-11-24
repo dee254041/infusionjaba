@@ -6,8 +6,8 @@ import { useParams } from 'next/navigation'
 type Product = { id: string; name: string; price: number; stock: number; category: string }
 type Line = Product & { quantity: number }
 
-export default function StationPosPage() {
-  const slug = useParams<{ slug: string }>().slug
+export function StationPos({ shopId }: { shopId: string }) {
+  const slug = shopId
   const [products, setProducts] = useState<Product[]>([])
   const [cart, setCart] = useState<Line[]>([])
   const [phone, setPhone] = useState('')
@@ -134,4 +134,8 @@ export default function StationPosPage() {
       </aside>
     </div>
   )
+}
+
+export default function Page() {
+  return <StationPos shopId={useParams<{ slug: string }>().slug} />
 }

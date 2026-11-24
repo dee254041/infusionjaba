@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
-export default function StationHomePage() {
-  const slug = useParams<{ slug: string }>().slug
+export function StationHome({ shopId }: { shopId: string }) {
+  const slug = shopId
   const [data, setData] = useState<{ shop?: { name: string; location: string }; summary?: { sales: number; paidOrders: number; products: number; openOrders: number } } | null>(null)
 
   useEffect(() => {
@@ -27,6 +27,11 @@ export default function StationHomePage() {
       </div>
     </div>
   )
+}
+
+export default function Page() {
+  const shopId = useParams<{ slug: string }>().slug
+  return <StationHome shopId={shopId} />
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

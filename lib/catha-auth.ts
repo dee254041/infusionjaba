@@ -43,6 +43,11 @@ export async function requireCathaAuth() {
  * Middleware sets x-catha-pathname. Deny-by-default: cashiers/managers only see modules with view=true.
  */
 export async function requireCathaNavAccessForRequestPath() {
+  const existing = await getCathaSession()
+  if (!existing?.user?.email) {
+    const { readAnyStationSession } = await import('@/lib/station/guard')
+    if (await readAnyStationSession()) return existing
+  }
   const session = await requireCathaAuth()
   const h = await headers()
   const pathname = (h.get('x-catha-pathname') || '').trim() || '/catha'

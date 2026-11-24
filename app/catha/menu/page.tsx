@@ -1,22 +1,23 @@
 'use client'
 
 import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 type Product = { id: string; name: string; price: number; category: string }
 type Line = Product & { quantity: number }
 
-export default function StationMenuPage() {
+export default function CathaShopMenuPage() {
   return (
     <Suspense fallback={<div className="px-4 py-16 text-center">Loading menu…</div>}>
-      <StationMenu />
+      <CathaShopMenu />
     </Suspense>
   )
 }
 
-function StationMenu() {
-  const slug = useParams<{ slug: string }>().slug
-  const table = useSearchParams().get('t') || ''
+function CathaShopMenu() {
+  const params = useSearchParams()
+  const shopId = params.get('id') || ''
+  const table = params.get('t') || ''
   const [shop, setShop] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [cart, setCart] = useState<Line[]>([])
@@ -25,7 +26,8 @@ function StationMenu() {
   const [missing, setMissing] = useState(false)
 
   useEffect(() => {
-    fetch(`/api/menu/${slug}/catalog`, { cache: 'no-store' })
+    if (!shopId) return
+    fetch(`/api/menu/${shopId}/catalog`, { cache: 'no-store' })
       .then(async (res) => {
         if (!res.ok) {
           setMissing(true)
@@ -35,11 +37,11 @@ function StationMenu() {
       })
       .then((data) => {
         if (!data) return
-        setShop(data.shop?.name || slug)
+        setShop(data.shop?.name || 'Menu')
         setProducts(data.products || [])
       })
       .catch(() => setMissing(true))
-  }, [slug])
+  }, [shopId])
 
   const total = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart])
 
@@ -54,7 +56,7 @@ function StationMenu() {
   const pay = async (event: FormEvent) => {
     event.preventDefault()
     setMessage('')
-    const created = await fetch(`/api/menu/${slug}/order`, {
+    const created = await fetch(`/api/menu/${shopId}/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -75,7 +77,7 @@ function StationMenu() {
         phoneNumber: phone,
         amount: data.order.total,
         accountReference: data.order.id,
-        transactionDesc: `${slug} menu`,
+        transactionDesc: 'Shop menu',
       }),
     })
     const stkData = await stk.json()
@@ -86,14 +88,23 @@ function StationMenu() {
     setMessage('Check your phone and enter your M-Pesa PIN.')
     for (let i = 0; i < 20; i++) {
       await new Promise((resolve) => setTimeout(resolve, 3000))
-      const check = await fetch(`/api/menu/${slug}/order?id=${encodeURIComponent(data.order.id)}`, { cache: 'no-store' })
+      const check = await fetch(`/api/menu/${shopId}/order?id=${encodeURIComponent(data.order.id)}`, { cache: 'no-store' })
       const checkData = await check.json()
       if (checkData.order?.paymentStatus === 'PAID') {
         setCart([])
-        setMessage('Payment received. The station has your order.')
+        setMessage('Payment received. The shop has your order.')
         return
       }
     }
+  }
+
+  if (!shopId) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <p>This page opens a shop menu when the QR code includes that shop&apos;s id.</p>
+        <a className="mt-4 inline-block underline" href="/menu">Catha Lounge menu</a>
+      </div>
+    )
   }
 
   if (missing) {

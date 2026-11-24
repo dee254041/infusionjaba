@@ -252,6 +252,53 @@ export async function verifyStationLogin(db: Db, slug: string, email: string, pi
   }
 }
 
+export async function loginByEmailPin(db: Db, email: string, pin: string) {
+  const code = cleanPin(pin)
+  const user = await db.collection(STATION.users).findOne({
+    email: email.trim().toLowerCase(),
+    active: { $ne: false },
+  })
+  if (!user?.pinHash || !code) return { ok: false as const, error: 'Email or PIN is wrong.' }
+  const lockedUntil = user.pinLockedUntil ? new Date(user.pinLockedUntil) : null
+  if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+    return { ok: false as const, error: 'Too many tries. Wait 15 minutes and use the PIN again.' }
+  }
+  const match = await bcrypt.compare(code, String(user.pinHash))
+  if (!match) {
+    const failures = Number(user.pinFailedAttempts || 0) + 1
+    await db.collection(STATION.users).updateOne(
+      { email: user.email },
+      {
+        $set: {
+          pinFailedAttempts: failures,
+          pinLockedUntil: failures >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null,
+        },
+      },
+    )
+    return { ok: false as const, error: 'Email or PIN is wrong.' }
+  }
+  await db.collection(STATION.users).updateOne(
+    { email: user.email },
+    { $set: { pinFailedAttempts: 0, pinLockedUntil: null } },
+  )
+  const assignments = readAssignments(user as Record<string, unknown>)
+  const shops = []
+  for (const assignment of assignments) {
+    const shop = await getStation(db, assignment.shopId)
+    if (!shop?.active) continue
+    shops.push({ id: shop.slug, name: shop.name, role: assignment.role })
+  }
+  if (!shops.length) return { ok: false as const, error: 'You are not placed on a shop.' }
+  return {
+    ok: true as const,
+    user: {
+      userId: String(user.id),
+      name: String(user.name || email),
+      shops,
+    },
+  }
+}
+
 function money(value: unknown): number {
   const n = Number(value)
   if (!Number.isFinite(n) || n < 0 || n > 10_000_000) return NaN

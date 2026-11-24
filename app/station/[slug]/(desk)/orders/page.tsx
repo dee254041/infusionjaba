@@ -15,8 +15,8 @@ type Order = {
   items: { name: string; quantity: number }[]
 }
 
-export default function StationOrdersPage() {
-  const slug = useParams<{ slug: string }>().slug
+export function StationOrders({ shopId }: { shopId: string }) {
+  const slug = shopId
   const [orders, setOrders] = useState<Order[]>([])
   const [error, setError] = useState('')
 
@@ -67,4 +67,8 @@ export default function StationOrdersPage() {
       </div>
     </div>
   )
+}
+
+export default function Page() {
+  return <StationOrders shopId={useParams<{ slug: string }>().slug} />
 }

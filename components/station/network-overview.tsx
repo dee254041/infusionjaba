@@ -90,9 +90,20 @@ export function NetworkOverview({ title }: { title: string }) {
                 <td className="py-3 pr-3">{kes(row.expenses)}</td>
                 <td className="py-3 pr-3">{row.lowStock}</td>
                 <td className="py-3 text-right">
-                  <a className="text-primary underline" href={row.kind === 'catha' ? '/catha' : `/station/${row.id}`}>
+                  <button
+                    type="button"
+                    className="text-primary underline"
+                    onClick={async () => {
+                      await fetch('/api/catha/shop-context', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: row.id }),
+                      })
+                      window.location.href = '/catha'
+                    }}
+                  >
                     Open
-                  </a>
+                  </button>
                 </td>
               </tr>
             ))}

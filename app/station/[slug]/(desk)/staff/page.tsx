@@ -5,8 +5,8 @@ import { useParams } from 'next/navigation'
 
 type Person = { id: string; name: string; email: string; role: string }
 
-export default function StationStaffPage() {
-  const slug = useParams<{ slug: string }>().slug
+export function StationStaff({ shopId }: { shopId: string }) {
+  const slug = shopId
   const [staff, setStaff] = useState<Person[]>([])
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export default function StationStaffPage() {
   return (
     <div>
       <h1 className="text-2xl font-semibold">People on this station</h1>
-      <p className="mt-1 text-sm text-[#78716c]">The super admin places each person here and sets the email and PIN. This station cannot see another station&apos;s people.</p>
+      <p className="mt-1 text-sm text-[#78716c]">The super admin places each person on this shop and sets the email and PIN. They still sign in at /catha.</p>
       <ul className="mt-4 space-y-2">
         {staff.map((person) => (
           <li key={person.id} className="rounded-xl border border-[#e7e0d6] bg-white px-4 py-3 text-sm">
@@ -30,4 +30,8 @@ export default function StationStaffPage() {
       </ul>
     </div>
   )
+}
+
+export default function Page() {
+  return <StationStaff shopId={useParams<{ slug: string }>().slug} />
 }

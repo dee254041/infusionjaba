@@ -5,8 +5,8 @@ import { useParams } from 'next/navigation'
 
 type Payment = { id: string; amount: number; phone: string; receipt: string; status: string; reference: string }
 
-export default function StationPaymentsPage() {
-  const slug = useParams<{ slug: string }>().slug
+export function StationPayments({ shopId }: { shopId: string }) {
+  const slug = shopId
   const [payments, setPayments] = useState<Payment[]>([])
 
   useEffect(() => {
@@ -31,4 +31,8 @@ export default function StationPaymentsPage() {
       </div>
     </div>
   )
+}
+
+export default function Page() {
+  return <StationPayments shopId={useParams<{ slug: string }>().slug} />
 }

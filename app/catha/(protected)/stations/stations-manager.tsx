@@ -80,12 +80,12 @@ export function StationsManager() {
       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Super admin</p>
       <h1 className="mt-1 text-3xl font-semibold">New station</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        You are the one super admin for every station. Each station has its own admin and its own orders, stock, and menu. You place staff on one station or several, and they sign in with email and a 4-digit PIN. Payments stay on the same M-Pesa till.
+        You are the one super admin for every shop. Each shop has its own name and id, and its own orders, stock, and menu. Everyone still uses /catha. Payments stay on the same M-Pesa till.
       </p>
 
       <form onSubmit={submit} className="mt-6 grid gap-4 rounded-2xl border bg-card p-5 sm:grid-cols-2">
         <Field label="Shop name" value={form.name} onChange={(value) => set('name', value)} placeholder="Westlands Bar" />
-        <Field label="Address in the URL" value={form.slug} onChange={(value) => set('slug', value)} placeholder="westlands-bar" />
+        <Field label="Shop id" value={form.slug} onChange={(value) => set('slug', value)} placeholder="westlands-bar" />
         <Field label="Phone" value={form.phone} onChange={(value) => set('phone', value)} placeholder="0712 000 000" />
         <Field label="Location" value={form.location} onChange={(value) => set('location', value)} placeholder="Westlands, Nairobi" />
         <Field label="Station admin name" value={form.adminName} onChange={(value) => set('adminName', value)} placeholder="Asha" />
@@ -106,14 +106,25 @@ export function StationsManager() {
             <div>
               <h2 className="font-medium">{shop.name}</h2>
               <p className="text-sm text-muted-foreground">
-                /station/{shop.slug} · /menu/{shop.slug}
+                Id {shop.slug}
                 {shop.location ? ` · ${shop.location}` : ''}
+                {' · '}menu /catha/menu?id={shop.slug}
               </p>
             </div>
             <div className="flex gap-2">
-              <a className="rounded-lg border px-3 py-2 text-sm" href={`/station/${shop.slug}`}>
-                Open station
-              </a>
+              <button
+                className="rounded-lg border px-3 py-2 text-sm"
+                onClick={async () => {
+                  await fetch('/api/catha/shop-context', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: shop.slug }),
+                  })
+                  window.location.href = '/catha'
+                }}
+              >
+                Work in this shop
+              </button>
               <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => toggle(shop)}>
                 {shop.active ? 'Pause shop' : 'Resume shop'}
               </button>

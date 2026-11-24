@@ -5,8 +5,8 @@ import { useParams } from 'next/navigation'
 
 type Product = { id: string; name: string; category: string; price: number; stock: number; visible: boolean }
 
-export default function StationInventoryPage() {
-  const slug = useParams<{ slug: string }>().slug
+export function StationInventory({ shopId }: { shopId: string }) {
+  const slug = shopId
   const [products, setProducts] = useState<Product[]>([])
   const [form, setForm] = useState({ name: '', category: 'General', price: '', stock: '' })
   const [error, setError] = useState('')
@@ -79,4 +79,8 @@ export default function StationInventoryPage() {
       </div>
     </div>
   )
+}
+
+export default function Page() {
+  return <StationInventory shopId={useParams<{ slug: string }>().slug} />
 }
