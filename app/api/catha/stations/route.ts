@@ -26,7 +26,6 @@ export async function POST(request: Request) {
   }
   const created = await createStation(db, {
     name: String(body.name || ''),
-    slug: String(body.slug || ''),
     phone: String(body.phone || ''),
     location: String(body.location || ''),
     adminName: String(body.adminName || body.ownerName || ''),

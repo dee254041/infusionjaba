@@ -13,7 +13,6 @@ type Shop = {
 
 const empty = {
   name: '',
-  slug: '',
   phone: '',
   location: '',
   adminName: '',
@@ -80,12 +79,11 @@ export function StationsManager() {
       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Super admin</p>
       <h1 className="mt-1 text-3xl font-semibold">New station</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        You are the one super admin for every shop. Each shop has its own name and id, and its own orders, stock, and menu. Everyone still uses /catha. Payments stay on the same M-Pesa till.
+        You are the only person who sees every shop. Type the shop name and its admin. The shop id is created for you. An admin or staff member only sees a shop after you place them on it. Everyone still signs in at /catha. Payments stay on the same M-Pesa till.
       </p>
 
       <form onSubmit={submit} className="mt-6 grid gap-4 rounded-2xl border bg-card p-5 sm:grid-cols-2">
         <Field label="Shop name" value={form.name} onChange={(value) => set('name', value)} placeholder="Westlands Bar" />
-        <Field label="Shop id" value={form.slug} onChange={(value) => set('slug', value)} placeholder="westlands-bar" />
         <Field label="Phone" value={form.phone} onChange={(value) => set('phone', value)} placeholder="0712 000 000" />
         <Field label="Location" value={form.location} onChange={(value) => set('location', value)} placeholder="Westlands, Nairobi" />
         <Field label="Station admin name" value={form.adminName} onChange={(value) => set('adminName', value)} placeholder="Asha" />
@@ -203,7 +201,7 @@ function PeopleBoard({ shops }: { shops: Shop[] }) {
     <section className="mt-10">
       <h2 className="text-xl font-semibold">Place people</h2>
       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-        One email and one PIN. Choose Admin or Staff on each station. Leave a station blank and they cannot sign in there. The same person can be on one station or several.
+        One email and one PIN. An admin only sees the shops you set to Admin. Staff only see the shops you set to Staff. Leave a shop blank and they cannot open it.
       </p>
       <form onSubmit={save} className="mt-4 space-y-3 rounded-2xl border bg-card p-5">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -212,6 +210,7 @@ function PeopleBoard({ shops }: { shops: Shop[] }) {
           <Field label="PIN" value={pin} onChange={(value) => setPin(value.replace(/\D/g, '').slice(0, 4))} placeholder="4 digits, blank keeps the old PIN" required={false} />
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
+          {shops.length === 0 ? <p className="text-sm text-muted-foreground">Create a shop first. Its name will appear here so you can place an admin or staff on it.</p> : null}
           {shops.map((shop) => (
             <label key={shop.slug} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
               <span>{shop.name}</span>

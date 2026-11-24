@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto'
 import bcrypt from 'bcryptjs'
 import type { Db } from 'mongodb'
 import { getDatabase } from '@/lib/mongodb'
-import { normalizeStationSlug, stationOrderId } from '@/lib/station/slug'
+import { allocateStationId, stationOrderId } from '@/lib/station/slug'
 import type { StationRole } from '@/lib/station/token'
 
 export const STATION = {
@@ -79,7 +79,6 @@ export async function createStation(
   db: Db,
   input: {
     name: string
-    slug: string
     phone: string
     location: string
     adminName: string
@@ -87,12 +86,21 @@ export async function createStation(
     adminPin: string
   },
 ) {
-  const slug = normalizeStationSlug(input.slug || input.name)
   const name = input.name.trim()
-  if (!slug) return { ok: false as const, error: 'Choose a shop address with 3 or more letters. Catha, menu, and table are reserved.' }
   if (name.length < 2 || name.length > 80) return { ok: false as const, error: 'Enter the shop name.' }
-  const existing = await db.collection(STATION.shops).findOne({ slug })
-  if (existing) return { ok: false as const, error: 'That shop address is already in use.' }
+  const existingRows = await db.collection(STATION.shops).find({}, { projection: { slug: 1 } }).toArray()
+  const taken = new Set(existingRows.map((row) => String(row.slug || row._id || '')))
+  let slug = ''
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = allocateStationId(name, taken)
+    const existing = await db.collection(STATION.shops).findOne({ slug: candidate })
+    if (!existing) {
+      slug = candidate
+      break
+    }
+    taken.add(candidate)
+  }
+  if (!slug) return { ok: false as const, error: 'Could not create a shop id. Try again.' }
 
   const now = new Date()
   await db.collection(STATION.shops).insertOne({

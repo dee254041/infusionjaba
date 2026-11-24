@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStationOrderId, normalizeStationSlug, stationOrderId } from './slug'
+import { allocateStationId, isStationOrderId, normalizeStationSlug, stationOrderId } from './slug'
 import { signStationToken, verifyStationToken } from './token'
 
 describe('station slug', () => {
@@ -12,6 +12,14 @@ describe('station slug', () => {
     expect(normalizeStationSlug('menu')).toBeNull()
     expect(normalizeStationSlug('table')).toBeNull()
     expect(normalizeStationSlug('ab')).toBeNull()
+  })
+
+  it('builds a unique id from the shop name', () => {
+    const first = allocateStationId('Westlands Bar', new Set())
+    const second = allocateStationId('Westlands Bar', new Set([first]))
+    expect(first.startsWith('westlands-bar-')).toBe(true)
+    expect(second).not.toBe(first)
+    expect(allocateStationId('Catha', new Set()).startsWith('shop-')).toBe(true)
   })
 
   it('marks station orders so they never match a Catha order', () => {

@@ -19,7 +19,7 @@ const RESERVED = new Set([
   'www',
 ])
 
-/** Public station address. Lowercase, starts with a letter, no spaces. */
+/** Turn a shop name into a safe id stem. Reserved words and short names are rejected. */
 export function normalizeStationSlug(input: string): string | null {
   const slug = String(input || '')
     .trim()
@@ -32,6 +32,17 @@ export function normalizeStationSlug(input: string): string | null {
   if (!/^[a-z][a-z0-9-]*$/.test(slug)) return null
   if (RESERVED.has(slug)) return null
   return slug
+}
+
+/** Unique shop id from the name. The caller never types it. */
+export function allocateStationId(name: string, taken: Set<string> = new Set()): string {
+  const stem = normalizeStationSlug(name)?.slice(0, 20) || 'shop'
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const suffix = Math.random().toString(36).slice(2, 6)
+    const id = `${stem}-${suffix}`
+    if (!taken.has(id) && !RESERVED.has(id) && id.length <= 32) return id
+  }
+  return `shop-${Date.now().toString(36)}`
 }
 
 export function stationOrderId(slug: string): string {
