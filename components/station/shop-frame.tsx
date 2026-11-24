@@ -22,6 +22,10 @@ const ADMIN_ONLY = ['/catha/expenses', '/catha/clients', '/catha/suppliers', '/c
 function screenFor(path: string, shopId: string, role: string) {
   const adminOnly = ADMIN_ONLY.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
   if (adminOnly && role === 'STAFF') return <Denied />
+  if (path.startsWith('/catha/finance')) {
+    if (role === 'SUPER') return null
+    return <Denied />
+  }
   if (path.startsWith('/catha/pos')) return <StationPos shopId={shopId} />
   if (path.startsWith('/catha/orders')) return <StationOrders shopId={shopId} />
   if (path.startsWith('/catha/inventory') || path.startsWith('/catha/stock-movement')) return <StationInventory shopId={shopId} />
@@ -81,6 +85,10 @@ export function ShopFrame({ children }: { children: React.ReactNode }) {
 
   const inStation = context.shop.id !== 'catha'
   const showAllStores = context.role === 'SUPER'
+  const showShopBreakdown = showAllStores && (
+    (inStation && (path === '/catha' || path.startsWith('/catha/orders') || path.startsWith('/catha/finance')))
+    || (!inStation && path.startsWith('/catha/orders'))
+  )
 
   return (
     <div>
@@ -99,12 +107,12 @@ export function ShopFrame({ children }: { children: React.ReactNode }) {
           <span className="text-xs text-muted-foreground">Same /catha pages. The id keeps this shop separate.</span>
         </div>
       ) : null}
-      {inStation && showAllStores && path === '/catha' ? (
+      {showShopBreakdown ? (
         <div className="px-4 pt-4">
-          <NetworkOverview title="All stores" />
+          <NetworkOverview title="Every shop, kept separate" />
         </div>
       ) : null}
-      {inStation ? screenFor(path, context.shop.id, context.role) : children}
+      {inStation ? (screenFor(path, context.shop.id, context.role) ?? null) : children}
     </div>
   )
 }
