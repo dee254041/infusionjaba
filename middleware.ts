@@ -186,16 +186,24 @@ export async function middleware(request: NextRequest) {
     }
     if (section !== "login") {
       const cathaToken = await getTokenForApp(request, "catha")
-      if (String(cathaToken?.role || "").toUpperCase() === "SUPER_ADMIN") {
+      const cathaRole = String(cathaToken?.role || "").toUpperCase()
+      if (cathaRole === "SUPER_ADMIN" || cathaRole === "ADMIN") {
         return NextResponse.next()
       }
       const token = request.cookies.get(stationCookieName(slug))?.value || ""
       const session = await verifyStationToken(token, stationAuthSecret())
-      if (!session || session.shopId !== slug) {
-        const url = new URL(`/station/${slug}/login`, request.url)
-        url.searchParams.set("callbackUrl", pathname)
-        return NextResponse.redirect(url)
+      if (session && session.shopId === slug) {
+        return NextResponse.next()
       }
+      const secret = stationAuthSecret()
+      for (const cookie of request.cookies.getAll()) {
+        if (!cookie.name.startsWith("station.") || !cookie.name.endsWith(".session")) continue
+        const other = await verifyStationToken(cookie.value, secret)
+        if (other?.role === "ADMIN") return NextResponse.next()
+      }
+      const url = new URL(`/station/${slug}/login`, request.url)
+      url.searchParams.set("callbackUrl", pathname)
+      return NextResponse.redirect(url)
     }
     return NextResponse.next()
   }

@@ -11,6 +11,7 @@ const LINKS = [
   { href: '/inventory', label: 'Inventory', owner: false },
   { href: '/tables', label: 'Tables & QR', owner: false },
   { href: '/payments', label: 'M-Pesa', owner: false },
+  { href: '/network', label: 'All stores', owner: true },
   { href: '/staff', label: 'Staff', owner: true },
   { href: '/expenses', label: 'Expenses', owner: true },
   { href: '/clients', label: 'Clients', owner: true },
