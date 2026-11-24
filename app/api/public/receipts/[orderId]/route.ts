@@ -1,102 +1,47 @@
 import { NextResponse } from "next/server"
-import { getDatabase } from "@/lib/mongodb"
-import { summarizeCathaOrderPayments } from "@/lib/catha-order-payments"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit-simple"
-
-function isValidOrderId(orderId: string): boolean {
-  const trimmed = orderId.trim()
-  if (!trimmed) return false
-  return /^[A-Za-z0-9_-]{6,64}$/.test(trimmed)
-}
+import { loadPublicReceipt } from "@/lib/public-receipt"
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   const ip = getClientIp(request)
-  const rl = checkRateLimit(`public-receipt:${ip}`, 80, 60_000)
+  const rl = checkRateLimit(`public-receipt:${ip}`, 30, 60_000)
   if (!rl.ok) {
     return NextResponse.json(
       { error: "Too many requests" },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)), "Cache-Control": "no-store" } }
     )
   }
 
   const { orderId } = await params
-  if (!isValidOrderId(orderId)) {
-    return NextResponse.json({ error: "Receipt not found" }, { status: 404 })
-  }
+  const result = await loadPublicReceipt(orderId)
+  const cache =
+    result.cacheSeconds > 0
+      ? `public, max-age=${result.cacheSeconds}, s-maxage=${result.cacheSeconds}`
+      : "no-store"
 
-  try {
-    const db = await getDatabase("infusion_jaba")
-    const order = await db.collection("orders").findOne(
-      { id: orderId },
-      {
-        projection: {
-          _id: 0,
-          id: 1,
-          timestamp: 1,
-          items: 1,
-          subtotal: 1,
-          vat: 1,
-          total: 1,
-          paymentMethod: 1,
-          paymentStatus: 1,
-          status: 1,
-          mpesaReceiptNumber: 1,
-          receiptCode: 1,
-        },
-      }
-    )
-
-    if (!order) {
-      return NextResponse.json({ error: "Receipt not found" }, { status: 404 })
-    }
-
-    const summary = summarizeCathaOrderPayments(order as any)
-    const statusCompleted = String(order.status || "").toLowerCase() === "completed"
-    const computedSettled = summary.paymentStatus === "PAID" || summary.paymentStatus === "OVERPAID"
-    const explicitPaid = ["PAID", "OVERPAID"].includes(String(order.paymentStatus || "").toUpperCase())
-    const isSettled = statusCompleted && (computedSettled || explicitPaid)
-
-    // Never expose pending/unsettled orders on public receipt route.
-    if (!isSettled) {
-      return NextResponse.json({ error: "Receipt not found" }, { status: 404 })
-    }
-
-    const settingsDoc = await db.collection("catha_settings").findOne(
-      {},
-      { projection: { "receipt.tillNumber": 1, "mpesa.shortcode": 1 } }
-    )
-    const tillNumber = String(
-      settingsDoc?.receipt?.tillNumber || settingsDoc?.mpesa?.shortcode || ""
-    ).trim()
-
-    const payload = {
-      businessName: "catha lounge",
-      ...(tillNumber ? { tillNumber } : {}),
-      orderId: order.id,
-      timestamp: order.timestamp,
-      paymentMethod: order.paymentMethod || null,
-      paymentStatus: summary.paymentStatus,
-      receiptNumber: order.mpesaReceiptNumber || (order as any).receiptCode || null,
-      subtotal: Number(order.subtotal || 0),
-      vat: Number(order.vat || 0),
-      total: Number(order.total || 0),
-      items: Array.isArray(order.items)
-        ? order.items.map((item: any) => ({
-            name: String(item?.name || "Item"),
-            quantity: Number(item?.quantity || 0),
-            price: Number(item?.price || 0),
-          }))
-        : [],
-    }
-
-    const res = NextResponse.json(payload)
-    res.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120, max-age=30")
+  if (result.status === "ok") {
+    const res = NextResponse.json(result.receipt)
+    res.headers.set("Cache-Control", cache)
     res.headers.set("X-Robots-Tag", "noindex, nofollow")
     return res
-  } catch {
-    return NextResponse.json({ error: "Receipt unavailable" }, { status: 500 })
   }
+
+  if (result.status === "expired") {
+    const res = NextResponse.json({ error: "Receipt link expired" }, { status: 410 })
+    res.headers.set("Cache-Control", cache)
+    res.headers.set("X-Robots-Tag", "noindex, nofollow")
+    return res
+  }
+
+  if (result.status === "unavailable") {
+    return NextResponse.json({ error: "Receipt unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } })
+  }
+
+  const res = NextResponse.json({ error: "Receipt not found" }, { status: 404 })
+  res.headers.set("Cache-Control", cache)
+  res.headers.set("X-Robots-Tag", "noindex, nofollow")
+  return res
 }

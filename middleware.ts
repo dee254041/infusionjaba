@@ -173,6 +173,9 @@ function nextWithShopHints(request: NextRequest, requestHeaders?: Headers) {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname ?? ''
   if (STATIC_FILE.test(pathname)) return NextResponse.next()
+  // Receipt links are public and cached. Skip the site-status lookup so opening one
+  // does not ask the database whether the marketing site is online.
+  if (pathname === '/r' || pathname.startsWith('/r/')) return NextResponse.next()
   if (pathname.startsWith('/api/')) return nextWithShopHints(request)
   const allowOfflineDev = process.env.NODE_ENV !== 'production' && process.env.ALLOW_OFFLINE_DEV === 'true'
   const controlPath =

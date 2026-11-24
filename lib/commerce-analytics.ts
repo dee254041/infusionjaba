@@ -25,7 +25,6 @@ const STOREFRONT_PREFIXES = [
   '/pay',
   '/auth',
   '/privacy-policy',
-  '/r',
 ]
 
 export function isStorefrontAnalyticsPath(path: string) {

@@ -11,6 +11,7 @@ describe('storefront analytics paths', () => {
     expect(isStorefrontAnalyticsPath('/catha/pos')).toBe(false)
     expect(isStorefrontAnalyticsPath('/jaba/ai-intelligence')).toBe(false)
     expect(isStorefrontAnalyticsPath('/menu')).toBe(false)
+    expect(isStorefrontAnalyticsPath('/r/P084887')).toBe(false)
   })
 
   it('drops phone-like click labels and keeps scroll time', () => {
