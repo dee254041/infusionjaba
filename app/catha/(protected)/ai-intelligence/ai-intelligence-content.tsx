@@ -11,6 +11,7 @@ import {
 } from './_components/ai-intelligence-sections'
 import { AskAIPanel, AIQuickActions } from './_components/ai-ask-panel'
 import { CommerceIntelligenceSection } from './_components/commerce-intelligence-section'
+import { NetworkOverview } from '@/components/station/network-overview'
 
 interface IntelligenceData {
   success: boolean
@@ -34,6 +35,7 @@ interface IntelligenceData {
 }
 
 const SECTION_NAV = [
+  { id: 'stations-network', label: 'Stations' },
   { id: 'priority-actions', label: 'Priorities' },
   { id: 'ai-alerts', label: 'Alerts' },
   { id: 'ai-recommendations', label: 'Recommendations' },
@@ -141,6 +143,8 @@ export default function AIIntelligenceContent() {
         onRefresh={fetchData}
         loading={loading}
       />
+
+      <NetworkOverview title="How every station is doing" />
 
       {/* Jump navigation */}
       <SectionNav />
